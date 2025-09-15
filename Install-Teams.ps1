@@ -1,11 +1,15 @@
 ﻿<#
+Revision: 2.0.0
+Author: Sten Tijhuis (Stensel8)
+Date: 15/09/2025
+Purpose/Change: Refactored and moved to Local folder. See original credits below.
+
+
 Created by: Jeffery Field (jfield)
-Purpose: Installs New Teams Clients
-
-
-
-		:Change Log:
-	2/21/24 - initial write
+Revision: 1.0.0
+Purpose/Change: Installs New Teams Clients
+Date: 	2/21/24
+Purpose/Change: initial write
     
 #>
 
@@ -24,12 +28,11 @@ Function Set-IntuneSuccess {
     Set-IntuneSuccess
 
 .NOTES  
- Version: 1.0.0
- Author: Jeffery Field
+ Version: 2.0.0
+ Author: Sten Tijhuis (Stensel8)
  Description: Sets Intune Success Criteria
- Guid: 99b832ff-f003-4394-baca-7043b1f13ab2
  Tags: Intune,LOB,App
- LastUpdate: 3/26/24 1:38 PM
+ LastUpdate: 15-09-2025
  Source:
 #>
 

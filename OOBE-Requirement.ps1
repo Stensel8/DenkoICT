@@ -1,4 +1,9 @@
 <#
+Revision: 2.0.0
+Author: Sten Tijhuis (Stensel8)
+Date: 15/09/2025
+Purpose/Change: Refactored and moved to Intune folder. See original credits below.
+#>
 .SYNOPSIS
   Ensures the device is in OOBE.
 .DESCRIPTION
