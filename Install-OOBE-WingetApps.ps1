@@ -59,7 +59,8 @@ param(
 )
 
 #----------------------------------------------------------------------------[ Begin Declarations ]----------------------------------------------------------
-$ST = Start-Transcript -Path "$Logpath" -Append -force
+# Start a transcript to log the session; discard output to avoid unused-variable warnings.
+Start-Transcript -Path $LogPath -Append -Force | Out-Null
 
 #---------------------------------------------------------------------------[ End Initialisations ]--------------------------------------------------------
 
@@ -94,7 +95,7 @@ function Get-MSIProperties {
         $msiProps = @()
         $propRecord = $propView.GetType().InvokeMember("Fetch", "InvokeMethod", $null, $propView, $null)
         
-        while ($propRecord -ne $null) {
+        while ($null -ne $propRecord) {
             $property = $propRecord.GetType().InvokeMember("StringData", "GetProperty", $null, $propRecord, 1)
             $value = $propRecord.GetType().InvokeMember("StringData", "GetProperty", $null, $propRecord, 2)
             
@@ -113,7 +114,7 @@ function Get-MSIProperties {
         
         Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [INFO] Successfully extracted MSI properties from: $MSI"
         return $msiProps
-    catch {
+    } catch {
         Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [ERROR] Failed to extract MSI properties: $($_.Exception.Message)"
         throw
     }
@@ -167,11 +168,11 @@ function Install-PowerShell7MSI {
 
     try {
         Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [INFO] Extracting MSI properties..."
-        Get-MSIProperties -MSI $MSIPath
+        $msiProperties = Get-MSIProperties -MSI $MSIPath
         
-        $ProductCode = $script:ProductMSIProps | Where-Object MSIProperty -eq "ProductCode" | Select-Object -ExpandProperty Value
-        $ProductVersion = $script:ProductMSIProps | Where-Object MSIProperty -eq "ProductVersion" | Select-Object -ExpandProperty Value  
-        $ProductName = $script:ProductMSIProps | Where-Object MSIProperty -eq "ProductName" | Select-Object -ExpandProperty Value
+        $ProductCode = $msiProperties | Where-Object MSIProperty -eq "ProductCode" | Select-Object -ExpandProperty Value
+        $ProductVersion = $msiProperties | Where-Object MSIProperty -eq "ProductVersion" | Select-Object -ExpandProperty Value  
+        $ProductName = $msiProperties | Where-Object MSIProperty -eq "ProductName" | Select-Object -ExpandProperty Value
         
         Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [INFO] MSI Product: $ProductName v$ProductVersion"
     }
