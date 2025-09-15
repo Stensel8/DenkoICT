@@ -5,6 +5,8 @@
 - https://learn.microsoft.com/en-us/intune/configmgr/mdt/
 - https://www.microsoft.com/en-us/download/details.aspx?id=54259
 - https://github.com/Stensel8/Intune-Deployment-Tool
+- https://uupdump.net/
+
 
 ## Installers
 - 
