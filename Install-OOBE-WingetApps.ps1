@@ -174,7 +174,7 @@ function Install-PowerShell7MSI {
         $ProductVersion = $msiProperties | Where-Object MSIProperty -eq "ProductVersion" | Select-Object -ExpandProperty Value  
         $ProductName = $msiProperties | Where-Object MSIProperty -eq "ProductName" | Select-Object -ExpandProperty Value
         
-        Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [INFO] MSI Product: $ProductName v$ProductVersion"
+        Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [INFO] MSI Product: $ProductName v$ProductVersion (ProductCode: $ProductCode)"
     }
     catch {
         Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [ERROR] Getting MSI properties failed: $($_.Exception.Message)"
