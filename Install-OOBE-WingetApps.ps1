@@ -91,14 +91,14 @@ function Get-MSIProperties {
         $propView = $database.GetType().InvokeMember("OpenView", "InvokeMethod", $null, $database, ($query))
         $propView.GetType().InvokeMember("Execute", "InvokeMethod", $null, $propView, $null) | Out-Null
         
-        $script:ProductMSIProps = @()
+        $msiProps = @()
         $propRecord = $propView.GetType().InvokeMember("Fetch", "InvokeMethod", $null, $propView, $null)
         
         while ($propRecord -ne $null) {
             $property = $propRecord.GetType().InvokeMember("StringData", "GetProperty", $null, $propRecord, 1)
             $value = $propRecord.GetType().InvokeMember("StringData", "GetProperty", $null, $propRecord, 2)
             
-            $script:ProductMSIProps += [PSCustomObject]@{
+            $msiProps += [PSCustomObject]@{
                 MSIProperty = $property
                 Value = $value
             }
@@ -112,7 +112,7 @@ function Get-MSIProperties {
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($windowsInstaller) | Out-Null
         
         Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [INFO] Successfully extracted MSI properties from: $MSI"
-    }
+        return $msiProps
     catch {
         Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [ERROR] Failed to extract MSI properties: $($_.Exception.Message)"
         throw
