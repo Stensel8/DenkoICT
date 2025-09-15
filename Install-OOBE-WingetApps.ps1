@@ -29,7 +29,7 @@ Purpose/Change: Refactored and moved to Intune folder. See original credits belo
     Default location: "C:\Temp\AP-Provision-Device-Phase-{timestamp}-{computername}.log"
 
 .NOTES
-    Version:        1.1.0.0
+    Version:        2.0.0
     Author:         Sten Tijhuis
     Creation Date:  15/09/2025
     Last Modified:  15/09/2025
