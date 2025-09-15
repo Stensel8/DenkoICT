@@ -1,7 +1,12 @@
 ﻿
 
 
+
 #===========================================================================Get-MSIProps==========================================================================================
+# Revision: 2.0.0
+# Author: Sten Tijhuis (Stensel8)
+# Date: 15/09/2025
+# Purpose/Change: Refactored and moved to Local folder. See original credits below.
 
 Function Global:Get-MSIProps {
 <#  
