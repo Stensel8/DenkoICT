@@ -8,7 +8,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 if (Get-Command winget -ErrorAction SilentlyContinue) {
     Write-Host "winget is installed. Updating sources..."
     winget source update
-    return
+    exit 0
 }
 
 $owner = "microsoft"
