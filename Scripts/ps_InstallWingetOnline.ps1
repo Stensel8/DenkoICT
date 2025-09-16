@@ -1,5 +1,4 @@
 
-
 # =====================
 # WinGet Online Installer
 # =====================
@@ -68,7 +67,7 @@ foreach ($file in $pkgFiles) {
 # Final check
 $winget = Get-WingetPath
 if ($winget) {
-    Write-Host 'winget installed — updating sources'
+    Write-Host 'winget installed - updating sources'
     & $winget source update
     exit 0
 } else {
