@@ -24,8 +24,8 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 $winget = Get-WingetPath
 if ($winget) {
-    Write-Host "winget present — updating sources"
-    & $winget source update
+    Write-Host 'winget present - updating sources'
+    & "$winget" source update
     exit 0
 }
 
