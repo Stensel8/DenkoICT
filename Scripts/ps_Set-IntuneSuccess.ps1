@@ -17,7 +17,7 @@ Function Set-IntuneSuccess {
     Runs with default parameters
     Set-IntuneSuccess
 
-.NOTES  
+.NOTES 
  Version: 1.0.0
  Author: Jeffery Field
  Description: Sets Intune Success Criteria

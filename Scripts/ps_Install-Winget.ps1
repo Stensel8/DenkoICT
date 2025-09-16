@@ -1,4 +1,4 @@
-function Install-WinUtilWinget {
+function Install-Winget {
     <#
 
     .SYNOPSIS
@@ -7,7 +7,7 @@ function Install-WinUtilWinget {
     .DESCRIPTION
         This function will download the latest version of Winget and install it. If Winget is already installed, it will do nothing.
     #>
-    $isWingetInstalled = Test-WinUtilPackageManager -winget
+    $isWingetInstalled = Test-Winget
 
     try {
         if ($isWingetInstalled -eq "installed") {
