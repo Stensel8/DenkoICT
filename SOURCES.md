@@ -13,3 +13,4 @@ Sources which were used to create this repository and where I took inspiration f
 * https://2pintsoftware.com/products/deployr
 * https://www.immy.bot/
 * https://github.com/Romanitho/Winget-Install
+* https://github.com/ChrisTitusTech/winutil
