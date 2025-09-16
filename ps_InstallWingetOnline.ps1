@@ -1,61 +1,20 @@
-# Run as admin
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Error "Script must be run as Administrator."
-    exit 1
+# winget installer (online)
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) { Write-Error 'Run as Administrator'; exit 1 }
+if (Get-Command winget -ErrorAction SilentlyContinue) { Write-Host 'winget present — updating sources'; winget source update; exit 0 }
+
+$api = 'https://api.github.com/repos/microsoft/winget-cli/releases/latest'
+$assets = try { (Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent'='PowerShell' } -ErrorAction Stop).assets } catch { Write-Error "Failed to query GitHub: $_"; exit 1 }
+$pkgAssets = $assets | Where-Object { $_.name -match 'Microsoft.UI.Xaml|Microsoft.VCLibs|Microsoft.DesktopAppInstaller' }
+if (-not $pkgAssets) { Write-Warning 'No release assets found'; exit 1 }
+
+$tmp = Join-Path $env:TEMP 'winget_install'; New-Item -Path $tmp -ItemType Directory -Force | Out-Null
+$pkgAssets | ForEach-Object {
+    $dest = Join-Path $tmp $_.name
+    Write-Host "DL: $_.name"
+    if (-not (Try { Start-BitsTransfer -Source $_.browser_download_url -Destination $dest -DisplayName "DL $_.name" -Priority High -ErrorAction Stop; $true } Catch { Write-Warning "DL failed: $_"; $false })) { return }
+    if (-not (Test-Path -LiteralPath $dest)) { Write-Warning "Missing file, skipping: $dest"; return }
+    $path = try { (Resolve-Path -LiteralPath $dest -ErrorAction Stop).ProviderPath } catch { Write-Warning "Bad path: $_"; return }
+    Try { Add-AppxPackage -Path $path -ForceApplicationShutdown -DisableDevelopmentMode -ErrorAction Stop; Write-Host "Installed: $($_.name)" } Catch { Write-Warning "Install failed: $_" }
 }
 
-# If winget already present just update sources
-if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Write-Host "winget is installed. Updating sources..."
-    winget source update
-    exit 0
-}
-
-$owner = "microsoft"
-$repo  = "winget-cli"
-$api   = "https://api.github.com/repos/$owner/$repo/releases/latest"
-$headers = @{ "User-Agent" = "PowerShell" }
-
-try {
-    $release = Invoke-RestMethod -Uri $api -Headers $headers -ErrorAction Stop
-} catch {
-    Write-Error "Unable to query GitHub releases: $_"
-    exit 1
-}
-
-# Select assets that we need (names used by the winget releases)
-$assets = $release.assets | Where-Object { $_.name -match "Microsoft.UI.Xaml|Microsoft.VCLibs|Microsoft.DesktopAppInstaller" }
-
-if (-not $assets) {
-    Write-Warning "No matching assets found in the latest release. You may need to provide offline packages or check network access."
-    exit 1
-}
-
-$tempDir = Join-Path $env:TEMP "winget_install"
-New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
-
-foreach ($asset in $assets) {
-    $outFile = Join-Path $tempDir $asset.name
-    Write-Host "Downloading $($asset.name) ..."
-    try {
-        Start-BitsTransfer -Source $asset.browser_download_url -Destination $outFile -DisplayName "Downloading $($asset.name)" -Priority High -ErrorAction Stop
-    } catch {
-        Write-Warning "Failed to download $($asset.name): $_"
-        continue
-    }
-
-    Write-Host "Installing $($asset.name) ..."
-    try {
-        Add-AppxPackage -Path $outFile -ForceApplicationShutdown -DisableDevelopmentMode -ErrorAction Stop
-    } catch {
-        Write-Warning "Failed to install $($asset.name): $_"
-    }
-}
-
-# Final step: ensure winget is available and update sources
-if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Write-Host "winget installed. Updating sources..."
-    winget source update
-} else {
-    Write-Warning "winget was not installed successfully. Inspect logs and the downloaded files in $tempDir"
-}
+if (Get-Command winget -ErrorAction SilentlyContinue) { Write-Host 'winget installed — updating sources'; winget source update } else { Write-Warning "winget not installed. See $tmp" }
