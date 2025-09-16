@@ -8,7 +8,7 @@ function Test-Winget {
 
     $status = "not-installed"
 
-    if ($winget) {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
         # Check if Winget is available while getting it's Version if it's available
         $wingetExists = $true
         try {
