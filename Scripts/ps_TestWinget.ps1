@@ -32,7 +32,7 @@ function Test-Winget {
         # If Winget is available, Parse it's Version and give proper information to Terminal Output.
         # If it isn't available, the return of this funtion will be "not-installed", indicating that
         # Winget isn't installed/available on The System.
-    if ($wingetExists) {
+        if ($wingetExists) {
             # Check if Preview Version
             if ($wingetVersionFull.Contains("-preview")) {
                 $wingetVersion = $wingetVersionFull.Trim("-preview")
