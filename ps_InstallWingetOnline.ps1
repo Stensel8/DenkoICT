@@ -38,7 +38,7 @@ foreach ($asset in $assets) {
     $outFile = Join-Path $tempDir $asset.name
     Write-Host "Downloading $($asset.name) ..."
     try {
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $outFile -Headers $headers -UseBasicParsing -ErrorAction Stop
+        Start-BitsTransfer -Source $asset.browser_download_url -Destination $outFile -DisplayName "Downloading $($asset.name)" -Priority High -ErrorAction Stop
     } catch {
         Write-Warning "Failed to download $($asset.name): $_"
         continue
