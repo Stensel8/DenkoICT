@@ -4,14 +4,7 @@ function Test-Winget {
     .SYNOPSIS
         Checks if Winget is installed
 
-    .PARAMETER winget
-        Check if Winget is installed
-
     #>
-
-    Param(
-        [System.Management.Automation.SwitchParameter]$winget
-    )
 
     $status = "not-installed"
 
