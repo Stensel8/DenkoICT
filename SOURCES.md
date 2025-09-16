@@ -10,7 +10,3 @@ Sources which were used to create this repository and where I took inspiration f
 - https://uupdump.net/
 - https://2pintsoftware.com/products/deployr
 - https://www.immy.bot/
-
-
-## Installers
-- 
