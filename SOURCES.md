@@ -14,3 +14,8 @@ Sources which were used to create this repository and where I took inspiration f
 * https://www.immy.bot/
 * https://github.com/Romanitho/Winget-Install
 * https://github.com/ChrisTitusTech/winutil
+* https://api.github.com/repos/microsoft/winget-cli/releases/latest
+
+### Official Microsoft Partners
+* https://learn.robopack.com/home
+* https://www.rimo3.com/ms-intune-migration

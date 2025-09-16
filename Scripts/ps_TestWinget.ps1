@@ -77,3 +77,7 @@ function Test-Winget {
 
     return $status
 }
+
+$output = Test-Winget *>&1
+$output
+$output | Out-File "$env:ProgramData\Test-Winget.log" -Append
