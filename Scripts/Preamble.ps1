@@ -2,7 +2,7 @@
 Revision: 2.0.0
 Author: Sten Tijhuis (Stensel8)
 Date: 15/09/2025
-Purpose/Change: Refactored and moved to Local folder. See original credits below.
+Purpose/Change: Refactored and moved to Scripts folder. See original credits below.
 .SYNOPSIS
   <Overview of script>
 .DESCRIPTION
@@ -33,7 +33,7 @@ $PSModuleAutoloadingPreference = 'All'
 
 #[Declarations]-------------------------------------------------------------------------------[Declarations]--------------------------------------------------------------------------------[Declarations]
 #Script Version
-$ScriptVersion = "2.0.0"
+$ScriptVersion = "1.0"
 
 
 #Script Info
