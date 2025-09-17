@@ -1,3 +1,16 @@
 ## Some larger files and folders are ignored to keep the repository size manageable.
 # If you need those files, you can create them yourself. These are mostly OS images, Boot files and appbundles.
 --- IGNORE ---
+
+# Project/editor files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Common build/IDE outputs
+bin/
+obj/
+*.suo
+*.user
+*.nupkg
