@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 5.2.1
+.VERSION 5.2.2
 
 .AUTHOR Sten Tijhuis
 
@@ -83,7 +83,8 @@
 	"source": "PSScriptAnalyzer",
 	"startLineNumber": 733,
     "endLineNumber": 745,
-}]>
+}]
+[Version 5.2.2] - Fixed a typo on line 1119 ".SYNOPSIS".
 
 #>
 
@@ -115,7 +116,7 @@ This script is designed to be straightforward and easy to use, removing the hass
 .PARAMETER Help
     Displays the full help information for the script.
 .NOTES
-    Version      : 5.2.1
+    Version      : 5.2.2
     Created by   : Sten Tijhuis
     Original Author: https://github.com/asheroto/winget-install
 .LINK
@@ -135,7 +136,7 @@ param (
 )
 
 # Script information
-$CurrentVersion = '5.2.1'
+$CurrentVersion = '5.2.2'
 $RepoOwner = 'asheroto'
 $RepoName = 'winget-install'
 $PowerShellGalleryName = 'winget-install'
