@@ -84,7 +84,7 @@
 	"startLineNumber": 733,
     "endLineNumber": 745,
 }]
-[Version 5.2.2] - Fixed a typo on line 1119 ".SYNOPSIS".
+[Version 5.2.2] - Fixed 2 typos on line 1119 ".SYNOPSIS". and line 179 "Location".
 
 #>
 
@@ -176,7 +176,7 @@ if ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name -match "NT AU
     $RunAsSystem = $true
 }
 
-# Find the WinGet Executable Loaction (for use when running in SYSTEM context)
+# Find the WinGet Executable Location (for use when running in SYSTEM context)
 function Find-WinGet {
     try {
         # Get the WinGet path
