@@ -2,6 +2,13 @@
 
 For my internship at Denko IT, I am providing some scripts and documentation for my automation tasks.
 
+# Main goal
+The main goal of this repository is to provide scripts and documentation for the automation of Windows 10/11 deployment and management using Powershell, Winget, HPIA, DCU-CLI, Microsoft Intune, KaseyaOne and other tools.
+
+
+# Issues and questions
+If you have any issues, feature requests, or other questions, please [open an issue on GitHub](https://github.com/Stensel8/DenkoICT/issues). I will try to respond as soon as possible.
+
 # Other links
 
 Links to other important websites, repositories and resources for this repository
