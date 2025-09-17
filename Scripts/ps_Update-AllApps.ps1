@@ -23,10 +23,6 @@ function Update-AllApps {
         }
     }
 
-    # Pause equivalent
-    Write-Host ""
-    Write-Host "Press any key to continue..." -ForegroundColor Cyan
-
     Write-Host ""
     Write-Host "Exiting..." -ForegroundColor Green
     Start-Sleep -Seconds 1
