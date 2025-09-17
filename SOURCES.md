@@ -16,6 +16,8 @@ Sources which were used to create this repository and where I took inspiration f
 * https://github.com/ChrisTitusTech/winutil
 * https://api.github.com/repos/microsoft/winget-cli/releases/latest
 * https://github.com/KelvinTegelaar/RunAsUser
+* https://github.com/asheroto/winget-install
+
 
 ### Official Microsoft Partners
 * https://learn.robopack.com/home
