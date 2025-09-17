@@ -1116,7 +1116,7 @@ function Get-InstalledLibVersion {
 
 function Install-LibIfRequired {
     <#
-    .SyNOPSIS
+    .SYNOPSIS
     Installs a specified library if it is not already installed or if the downloaded version is newer.
 
     .DESCRIPTION
