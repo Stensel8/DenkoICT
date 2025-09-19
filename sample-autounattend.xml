@@ -805,26 +805,107 @@ try {
 Write-DeploymentLog "=== Phase 1 Deployment Completed ===" "INFO"
 		</File>
 		<File path="C:\Windows\Setup\Scripts\unattend-02.ps1">
+# Enhanced deployment script with logging - Phase 2
+# Source the logging function
+. "C:\Windows\Setup\Scripts\DeploymentLogger.ps1"
+
+Write-DeploymentLog "=== Starting Phase 2 Deployment ===" "INFO"
+
 # Run each script in separate process to isolate exit commands
+Write-DeploymentLog "Installing Winget (Phase 2)..." "INFO"
 Write-Host "[1/3] Installing Winget..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Winget.ps1' | iex`"" -Wait -WindowStyle Hidden
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Winget.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Winget installation (Phase 2) completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Winget installation (Phase 2) failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Winget installation (Phase 2) error: $($_.Exception.Message)" "ERROR"
+}
 
+Write-DeploymentLog "Installing Applications (Phase 2)..." "INFO"
 Write-Host "[2/3] Installing Applications..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallApplications.ps1' | iex`"" -Wait -WindowStyle Hidden
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallApplications.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Applications installation (Phase 2) completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Applications installation (Phase 2) failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Applications installation (Phase 2) error: $($_.Exception.Message)" "ERROR"
+}
 
+Write-DeploymentLog "Installing Drivers (Phase 2)..." "INFO"
 Write-Host "[3/3] Installing Drivers..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallDrivers.ps1' | iex`"" -Wait -WindowStyle Hidden
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallDrivers.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Drivers installation (Phase 2) completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Drivers installation (Phase 2) failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Drivers installation (Phase 2) error: $($_.Exception.Message)" "ERROR"
+}
+
+Write-DeploymentLog "=== Phase 2 Deployment Completed ===" "INFO"
 		</File>
 		<File path="C:\Windows\Setup\Scripts\unattend-03.ps1">
+# Enhanced deployment script with logging - Phase 3
+# Source the logging function
+. "C:\Windows\Setup\Scripts\DeploymentLogger.ps1"
+
+Write-DeploymentLog "=== Starting Phase 3 Deployment ===" "INFO"
+
 # Run each script in separate process to isolate exit commands
+Write-DeploymentLog "Installing Winget (Phase 3)..." "INFO"
 Write-Host "[1/3] Installing Winget..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Winget.ps1' | iex`"" -Wait -WindowStyle Hidden
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Winget.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Winget installation (Phase 3) completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Winget installation (Phase 3) failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Winget installation (Phase 3) error: $($_.Exception.Message)" "ERROR"
+}
 
+Write-DeploymentLog "Installing Applications (Phase 3)..." "INFO"
 Write-Host "[2/3] Installing Applications..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallApplications.ps1' | iex`"" -Wait -WindowStyle Hidden
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallApplications.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Applications installation (Phase 3) completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Applications installation (Phase 3) failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Applications installation (Phase 3) error: $($_.Exception.Message)" "ERROR"
+}
 
+Write-DeploymentLog "Installing Drivers (Phase 3)..." "INFO"
 Write-Host "[3/3] Installing Drivers..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallDrivers.ps1' | iex`"" -Wait -WindowStyle Hidden
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallDrivers.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Drivers installation (Phase 3) completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Drivers installation (Phase 3) failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Drivers installation (Phase 3) error: $($_.Exception.Message)" "ERROR"
+}
+
+Write-DeploymentLog "=== Phase 3 Deployment Completed ===" "INFO"
+
+# Final deployment status summary
+Write-DeploymentLog "=== DEPLOYMENT SUMMARY ===" "INFO"
+Write-DeploymentLog "All deployment phases completed. Check log for any errors." "INFO"
+Write-DeploymentLog "Log file location: C:\DenkoICT-Deployment.log" "INFO"
 		</File>
 		<File path="C:\Windows\Setup\Scripts\Specialize.ps1">
 $scripts = @(
