@@ -1,8 +1,20 @@
 <#
 .SYNOPSIS
-    MDT Task Sequence Script to install vendor driver tools via WinGet and run driver updates.
+    Task Script to install vendor driver tools and run driver updates.
 .DESCRIPTION
-    Detects system manufacturer and installs the appropriate vendor driver tool (Dell, HP, Lenovo) via WinGet, then runs a driver update.
+    Detects system manufacturer and installs the appropriate vendor driver tool:
+    - Dell: Dell Command Update via WinGet
+    - HP: HPDrivers PowerShell module / HP Image Assistant via WinGet / HP CMSL/HPIA
+    - Lenovo: Lenovo System Update via WinGet
+    
+    For HP systems, this script uses the HPDrivers module from PowerShell Gallery which provides:
+    - Better reliability than HP CMSL/HPIA
+    - Automatic driver detection and installation
+    - BIOS update capabilities
+    - Automatic cleanup of installation files
+    - No dependency on WinGet for HP driver updates
+.NOTES
+    HP driver updates now use the HPDrivers module: https://github.com/UsefulScripts01/HPDrivers
 #>
 
 # Ensure script is running with admin privileges
@@ -40,18 +52,44 @@ function Install-And-RunDell {
 }
 
 function Install-And-RunHP {
-    Write-Host "Installing HP Image Assistant via WinGet..."
-    winget install --id HP.ImageAssistant -e --accept-source-agreements --accept-package-agreements
+    Write-Host "Installing HP drivers using HPDrivers PowerShell module..." -ForegroundColor Yellow
+    
+    try {
+        # Ensure NuGet provider is installed
+        Write-Host "Installing NuGet package provider..."
+        Install-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201 -Force -ErrorAction Stop
+        
+        # Install HPDrivers module from PowerShell Gallery
+        Write-Host "Installing HPDrivers module from PowerShell Gallery..."
+        Install-Module -Name HPDrivers -Force -ErrorAction Stop
+        
+        # Import the module
+        Import-Module HPDrivers -Force -ErrorAction Stop
+        
+        Write-Host "Running HP driver update with HPDrivers module..."
+        # Use -NoPrompt for automated installation, -BIOS for BIOS updates, -DeleteInstallationFiles for cleanup
+        Get-HPDrivers -NoPrompt -BIOS -DeleteInstallationFiles
+        
+        Write-Host "HP driver update completed successfully." -ForegroundColor Green
+        
+    } catch {
+        Write-Warning "Failed to install or run HPDrivers module: $($_.Exception.Message)"
+        Write-Host "Falling back to HP Image Assistant method..."
+        
+        # Fallback to original method
+        Write-Host "Installing HP Image Assistant via WinGet..."
+        winget install --id HP.ImageAssistant -e --accept-source-agreements --accept-package-agreements
 
-    Write-Host "Running HP Image Assistant..."
-    $HPIAPath = "C:\SWSetup\HPImageAssistant\HPImageAssistant.exe"
-    if (Test-Path $HPIAPath) {
-        $downloadPath = "C:\SWSetup"
-        New-Item -ItemType Directory -Path $downloadPath -Force | Out-Null
+        Write-Host "Running HP Image Assistant..."
+        $HPIAPath = "C:\SWSetup\HPImageAssistant\HPImageAssistant.exe"
+        if (Test-Path $HPIAPath) {
+            $downloadPath = "C:\SWSetup"
+            New-Item -ItemType Directory -Path $downloadPath -Force | Out-Null
 
-        & $HPIAPath /Operation:Analyze /Category:Driver /Action:Install /Silent /ReportFolder:$downloadPath
-    } else {
-        Write-Warning "HP Image Assistant not found at expected path."
+            & $HPIAPath /Operation:Analyze /Category:Driver /Action:Install /Silent /ReportFolder:$downloadPath
+        } else {
+            Write-Warning "HP Image Assistant not found at expected path."
+        }
     }
 }
 
