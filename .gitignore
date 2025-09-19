@@ -14,3 +14,6 @@ obj/
 *.suo
 *.user
 *.nupkg
+
+# OS images and boot files which could contain sensitive information
+autounattend.xml
