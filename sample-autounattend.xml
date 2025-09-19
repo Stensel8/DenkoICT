@@ -141,16 +141,16 @@
 	<settings pass="auditUser"></settings>
 	<settings pass="oobeSystem">
 		<component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-			<InputLocale>0409:00020409</InputLocale>
-			<SystemLocale>en-US</SystemLocale>
+			<InputLocale>0409:00000409</InputLocale>
+			<SystemLocale>nl-NL</SystemLocale>
 			<UILanguage>nl-NL</UILanguage>
-			<UserLocale>en-US</UserLocale>
+			<UserLocale>nl-NL</UserLocale>
 		</component>
 		<component name="Microsoft-Windows-International-Core" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-			<InputLocale>0409:00020409</InputLocale>
-			<SystemLocale>en-US</SystemLocale>
+			<InputLocale>0409:00000409</InputLocale>
+			<SystemLocale>nl-NL</SystemLocale>
 			<UILanguage>nl-NL</UILanguage>
-			<UserLocale>en-US</UserLocale>
+			<UserLocale>nl-NL</UserLocale>
 		</component>
 		<component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
 			<UserAccounts>
@@ -168,8 +168,8 @@
 			</UserAccounts>
 			<AutoLogon>
 				<Username>Denkoadmin</Username>
-				<Enabled>true</Enabled>
-				<LogonCount>1</LogonCount>
+				<Enabled>false</Enabled>
+				<LogonCount>0</LogonCount>
 				<Password>
 					<Value></Value>
 					<PlainText>true</PlainText>
@@ -203,8 +203,8 @@
 			</UserAccounts>
 			<AutoLogon>
 				<Username>Denkoadmin</Username>
-				<Enabled>true</Enabled>
-				<LogonCount>1</LogonCount>
+				<Enabled>false</Enabled>
+				<LogonCount>0</LogonCount>
 				<Password>
 					<Value></Value>
 					<PlainText>true</PlainText>
@@ -241,6 +241,35 @@ foreach( $file in $Document.unattend.Extensions.File ) {
     [System.IO.File]::WriteAllBytes( $path, $bytes );
 }
 		</ExtractScript>
+		<File path="C:\Windows\Setup\Scripts\DeploymentLogger.ps1">
+# Enhanced Deployment Logger
+# Logs all deployment activities to C:\DenkoICT-Deployment.log
+
+$LogFile = "C:\DenkoICT-Deployment.log"
+
+function Write-DeploymentLog {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+    
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LogEntry = "[$Timestamp] [$Level] $Message"
+    
+    # Write to both console and log file
+    Write-Host $LogEntry
+    Add-Content -Path $LogFile -Value $LogEntry -Encoding UTF8
+}
+
+# Start deployment logging
+Write-DeploymentLog "=== Denko ICT Windows Deployment Started ===" "INFO"
+Write-DeploymentLog "Computer: $env:COMPUTERNAME" "INFO"
+Write-DeploymentLog "User: $env:USERNAME" "INFO"
+Write-DeploymentLog "OS Version: $(Get-WmiObject Win32_OperatingSystem | Select-Object -ExpandProperty Caption)" "INFO"
+
+# Export function for use in other scripts
+$global:WriteDeploymentLog = ${function:Write-DeploymentLog}
+		</File>
 		<File path="C:\Windows\Setup\Scripts\GetComputerName.ps1">
 # Get the serialnumber of the machine via the CIMinstance cmdlet
 $serial = (Get-CimInstance Win32_BIOS).SerialNumber
@@ -412,6 +441,7 @@ $selectors = @(
 	'MediaPlayback';
 	'MicrosoftWindowsPowerShellV2Root';
 	'Recall';
+	'WorkFolders-Client';
 );
 $getCommand = {
   Get-WindowsOptionalFeature -Online | Where-Object -Property 'State' -NotIn -Value @(
@@ -455,6 +485,62 @@ $logfile = 'C:\Windows\Setup\Scripts\RemoveFeatures.log';
 		$result | ConvertTo-Json -Depth 3 -Compress;
 	}
 } *&gt;&amp;1 &gt;&gt; $logfile;
+		</File>
+		<File path="C:\Windows\Setup\Scripts\CleanupDesktop.ps1">
+# Cleanup OneDrive shortcuts and desktop.ini files
+# Source the logging function
+. "C:\Windows\Setup\Scripts\DeploymentLogger.ps1"
+
+Write-DeploymentLog "Starting desktop cleanup..." "INFO"
+
+# Remove OneDrive shortcuts from desktop
+$DesktopPath = [Environment]::GetFolderPath("Desktop")
+$PublicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
+
+$OneDriveShortcuts = @(
+    "$DesktopPath\OneDrive.lnk",
+    "$PublicDesktop\OneDrive.lnk",
+    "$DesktopPath\OneDrive - *.lnk",
+    "$PublicDesktop\OneDrive - *.lnk"
+)
+
+foreach ($shortcut in $OneDriveShortcuts) {
+    if (Test-Path $shortcut) {
+        Remove-Item $shortcut -Force -ErrorAction SilentlyContinue
+        Write-DeploymentLog "Removed OneDrive shortcut: $shortcut" "INFO"
+    }
+}
+
+# Hide desktop.ini files
+$DesktopIniFiles = @(
+    "$DesktopPath\desktop.ini",
+    "$PublicDesktop\desktop.ini"
+)
+
+foreach ($file in $DesktopIniFiles) {
+    if (Test-Path $file) {
+        Set-ItemProperty -Path $file -Name Attributes -Value ([System.IO.FileAttributes]::Hidden + [System.IO.FileAttributes]::System)
+        Write-DeploymentLog "Hidden desktop.ini file: $file" "INFO"
+    }
+}
+
+# Remove OneDrive from Quick Access
+Write-DeploymentLog "Removing OneDrive from Windows Explorer Quick Access..." "INFO"
+$QuickAccessRegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace"
+$OneDriveGUIDs = @(
+    "{018D5C66-4533-4307-9B53-224DE2ED1FE6}",  # OneDrive
+    "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}"   # OneDrive (alternative)
+)
+
+foreach ($guid in $OneDriveGUIDs) {
+    $regPath = "$QuickAccessRegPath\$guid"
+    if (Test-Path $regPath) {
+        Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue
+        Write-DeploymentLog "Removed OneDrive from Quick Access: $guid" "INFO"
+    }
+}
+
+Write-DeploymentLog "Desktop cleanup completed." "INFO"
 		</File>
 		<File path="C:\Windows\Setup\Scripts\Wifi.xml">
 &lt;WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1"&gt;
@@ -526,11 +612,18 @@ Set-ItemProperty -LiteralPath $key -Name 'ConfigureStartPins' -Value $json -Type
 &lt;/LayoutModificationTemplate&gt;
 		</File>
 		<File path="C:\Windows\Setup\Scripts\SetColorTheme.ps1">
+# Enhanced Color Theme Configuration with Dark Background
+# Source the logging function
+. "C:\Windows\Setup\Scripts\DeploymentLogger.ps1"
+
+Write-DeploymentLog "Configuring dark theme and colors..." "INFO"
+
 $lightThemeSystem = 0;
 $lightThemeApps = 0;
 $accentColorOnStart = 0;
 $enableTransparency = 0;
 $htmlAccentColor = '#0078D4';
+
 &amp; {
 	$params = @{
 		LiteralPath = 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize';
@@ -541,7 +634,28 @@ $htmlAccentColor = '#0078D4';
 	Set-ItemProperty @params -Name 'AppsUseLightTheme' -Value $lightThemeApps;
 	Set-ItemProperty @params -Name 'ColorPrevalence' -Value $accentColorOnStart;
 	Set-ItemProperty @params -Name 'EnableTransparency' -Value $enableTransparency;
+	
+	# Fix Windows 11 dark background theme
+	Write-DeploymentLog "Setting Windows 11 dark background theme..." "INFO"
+	
+	# Set wallpaper to Windows 11 dark theme
+	$regPath = 'Registry::HKCU\Control Panel\Desktop'
+	Set-ItemProperty -LiteralPath $regPath -Name 'Wallpaper' -Value 'C:\Windows\Web\Wallpaper\Windows\img19.jpg' -Type 'String' -Force
+	Set-ItemProperty -LiteralPath $regPath -Name 'WallpaperStyle' -Value '10' -Type 'String' -Force  # Fill
+	Set-ItemProperty -LiteralPath $regPath -Name 'TileWallpaper' -Value '0' -Type 'String' -Force
+	
+	# Windows 11 dark theme colors
+	$themeColors = 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+	Set-ItemProperty -LiteralPath $themeColors -Name 'SystemUsesLightTheme' -Value 0 -Type 'DWord' -Force
+	Set-ItemProperty -LiteralPath $themeColors -Name 'AppsUseLightTheme' -Value 0 -Type 'DWord' -Force
+	
+	# Set dark theme for taskbar and system
+	$explorerPath = 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+	Set-ItemProperty -LiteralPath $explorerPath -Name 'UseCompactMode' -Value 0 -Type 'DWord' -Force
+	
+	Write-DeploymentLog "Dark background theme configured successfully." "INFO"
 };
+
 &amp; {
 	Add-Type -AssemblyName 'System.Drawing';
 	$accentColor = [System.Drawing.ColorTranslator]::FromHtml( $htmlAccentColor );
@@ -577,17 +691,118 @@ $htmlAccentColor = '#0078D4';
 	$palette[ $index++ ] = $accentColor.A;
 	Set-ItemProperty @params -Value $palette -Type 'Binary' -Force;
 };
+
+Write-DeploymentLog "Color theme configuration completed." "INFO"
+		</File>
+		<File path="C:\Windows\Setup\Scripts\SetOfficeTheme.ps1">
+# Configure Office 365 Theme to Colorful
+# Source the logging function
+. "C:\Windows\Setup\Scripts\DeploymentLogger.ps1"
+
+Write-DeploymentLog "Configuring Office 365 theme to colorful..." "INFO"
+
+# Office 365 theme registry keys
+$officeVersions = @(
+    "16.0",  # Office 2016/2019/365
+    "15.0"   # Office 2013 (fallback)
+)
+
+$officeApps = @(
+    "Word",
+    "Excel", 
+    "PowerPoint",
+    "Outlook",
+    "Access",
+    "Publisher",
+    "Project",
+    "Visio"
+)
+
+# Set theme for each Office version and application
+foreach ($version in $officeVersions) {
+    foreach ($app in $officeApps) {
+        $regPath = "HKCU:\Software\Microsoft\Office\$version\$app\Options"
+        
+        try {
+            # Create registry path if it doesn't exist
+            if (!(Test-Path $regPath)) {
+                New-Item -Path $regPath -Force | Out-Null
+            }
+            
+            # Set Office UI theme to Colorful (4)
+            # 0 = Use system theme, 1 = White, 2 = Dark Gray, 3 = Black, 4 = Colorful
+            Set-ItemProperty -Path $regPath -Name "UI Theme" -Value 4 -Type DWord -Force
+            Write-DeploymentLog "Set $app (v$version) theme to Colorful" "INFO"
+            
+        } catch {
+            Write-DeploymentLog "Failed to set theme for $app (v$version): $($_.Exception.Message)" "WARNING"
+        }
+    }
+}
+
+# Set global Office theme preference
+$globalOfficePath = "HKCU:\Software\Microsoft\Office\16.0\Common"
+if (!(Test-Path $globalOfficePath)) {
+    New-Item -Path $globalOfficePath -Force | Out-Null
+}
+
+try {
+    Set-ItemProperty -Path $globalOfficePath -Name "UI Theme" -Value 4 -Type DWord -Force
+    Write-DeploymentLog "Set global Office theme to Colorful" "INFO"
+} catch {
+    Write-DeploymentLog "Failed to set global Office theme: $($_.Exception.Message)" "WARNING"
+}
+
+Write-DeploymentLog "Office theme configuration completed." "INFO"
 		</File>
 		<File path="C:\Windows\Setup\Scripts\unattend-01.ps1">
+# Enhanced deployment script with logging
+# Source the logging function
+. "C:\Windows\Setup\Scripts\DeploymentLogger.ps1"
+
+Write-DeploymentLog "=== Starting Phase 1 Deployment ===" "INFO"
+
 # Run each script in separate process to isolate exit commands
+Write-DeploymentLog "Installing Winget..." "INFO"
 Write-Host "[1/3] Installing Winget..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Winget.ps1' | iex`"" -Wait -WindowStyle Hidden
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Winget.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Winget installation completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Winget installation failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Winget installation error: $($_.Exception.Message)" "ERROR"
+}
 
+Write-DeploymentLog "Installing Applications..." "INFO"
 Write-Host "[2/3] Installing Applications..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallApplications.ps1' | iex`"" -Wait -WindowStyle Hidden
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallApplications.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Applications installation completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Applications installation failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Applications installation error: $($_.Exception.Message)" "ERROR"
+}
 
+Write-DeploymentLog "Installing Drivers..." "INFO"
 Write-Host "[3/3] Installing Drivers..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallDrivers.ps1' | iex`"" -Wait -WindowStyle Hidden
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallDrivers.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Drivers installation completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Drivers installation failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Drivers installation error: $($_.Exception.Message)" "ERROR"
+}
+
+Write-DeploymentLog "=== Phase 1 Deployment Completed ===" "INFO"
 		</File>
 		<File path="C:\Windows\Setup\Scripts\unattend-02.ps1">
 # Run each script in separate process to isolate exit commands
@@ -643,6 +858,18 @@ $scripts = @(
 		net.exe accounts /maxpwage:UNLIMITED;
 	};
 	{
+		# Enable SecureBoot if supported (UEFI systems)
+		try {
+			if ((Get-WmiObject -Class Win32_ComputerSystem).PCSystemType -eq 2) {
+				# Enable SecureBoot policy
+				reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State" /v UEFISecureBootEnabled /t REG_DWORD /d 1 /f;
+				# Note: Actual SecureBoot must be enabled in UEFI firmware
+			}
+		} catch {
+			# SecureBoot configuration failed - may not be supported
+		}
+	};
+	{
 		reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
 	};
 	{
@@ -666,6 +893,9 @@ $scripts = @(
 	};
 	{
 		reg.exe add "HKU\.DEFAULT\Control Panel\Accessibility\StickyKeys" /v Flags /t REG_SZ /d 10 /f;
+	};
+	{
+		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\CleanupDesktop.ps1' -Raw | Invoke-Expression;
 	};
 	{
 		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-01.ps1' -Raw | Invoke-Expression;
@@ -743,6 +973,9 @@ $scripts = @(
 	};
 	{
 		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\SetColorTheme.ps1' -Raw | Invoke-Expression;
+	};
+	{
+		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\SetOfficeTheme.ps1' -Raw | Invoke-Expression;
 	};
 	{
 		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-03.ps1' -Raw | Invoke-Expression;
