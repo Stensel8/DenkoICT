@@ -1,11 +1,10 @@
 <#
 .SYNOPSIS
-    Install vendor driver update tools and run updates for Dell, HP, and Lenovo systems.
+    Install vendor driver update tools and run updates for Dell and HP systems.
 .DESCRIPTION
     Detects system manufacturer and runs appropriate driver update tool:
     - Dell: Dell Command Update
     - HP: HP Image Assistant (primary) or HP CMSL (fallback) - supports all enterprise HP models
-    - Lenovo: Lenovo System Update
     
     This script is designed for use after OOBE (Out-of-Box Experience).
     
@@ -380,55 +379,7 @@ function Update-HPDrivers {
     }
 }
 
-# Lenovo System Update
-function Update-LenovoDrivers {
-    Write-Host "Installing Lenovo System Update..." -ForegroundColor Yellow
-    
-    try {
-        if ($wingetAvailable) {
-            $wingetResult = winget install Lenovo.ThinkVantageSystemUpdate --silent --accept-package-agreements --accept-source-agreements
-        } else {
-            Write-Warning "WinGet not available - Lenovo System Update installation skipped"
-            Write-Host "Please install Lenovo System Update manually from Lenovo's website" -ForegroundColor Yellow
-        }
-        
-        # Check for multiple possible installation paths
-        $lenovoPaths = @(
-            "${env:ProgramFiles(x86)}\Lenovo\System Update\tvsu.exe",
-            "${env:ProgramFiles}\Lenovo\System Update\tvsu.exe",
-            "C:\Program Files (x86)\Lenovo\System Update\tvsu.exe",
-            "C:\Program Files\Lenovo\System Update\tvsu.exe"
-        )
-        
-        $lenovo = $null
-        foreach ($path in $lenovoPaths) {
-            if (Test-Path $path) {
-                $lenovo = $path
-                break
-            }
-        }
-        
-        if ($lenovo) {
-            Write-Host "Lenovo System Update found at: $lenovo" -ForegroundColor Gray
-            Write-Host "Running Lenovo driver updates..." -ForegroundColor Cyan
-            $result = Start-WithTimeout $lenovo @("/CM", "-search", "A", "-action", "INSTALL", "-noicon", "-noreboot") 20
-            
-            switch ($result) {
-                0 { Write-Host "Lenovo updates completed successfully" -ForegroundColor Green }
-                -1 { Write-Warning "Lenovo update process timed out" }
-                default { Write-Warning "Lenovo updates may have failed (exit code: $result)" }
-            }
-        } else {
-            Write-Warning "Lenovo System Update not found at any expected path"
-            Write-Host "Tried paths: $($lenovoPaths -join ', ')" -ForegroundColor Gray
-            if (-not $wingetAvailable) {
-                Write-Host "Consider downloading from: https://support.lenovo.com/us/en/downloads/ds012808" -ForegroundColor Yellow
-            }
-        }
-    } catch {
-        Write-Warning "Lenovo driver update failed: $($_.Exception.Message)"
-    }
-}
+
 
 # Main execution
 try {
@@ -438,16 +389,13 @@ try {
     } elseif ($manufacturer -like "*hewlett*" -or $manufacturer -like "*hp*") {
         Write-Host "Detected HP system - running HP driver updates" -ForegroundColor Green
         Update-HPDrivers
-    } elseif ($manufacturer -like "*lenovo*") {
-        Write-Host "Detected Lenovo system - running Lenovo System Update" -ForegroundColor Green
-        Update-LenovoDrivers
     } elseif ($manufacturer -eq "unknown") {
         Write-Warning "Could not detect system manufacturer. Attempting HP method as fallback (most common)..."
-        Write-Host "If this fails, please run the script on a Dell or Lenovo system, or install drivers manually" -ForegroundColor Yellow
+        Write-Host "If this fails, please run the script on a Dell system, or install drivers manually" -ForegroundColor Yellow
         Update-HPDrivers
     } else {
         Write-Warning "Unsupported or unrecognized manufacturer: $manufacturer"
-        Write-Host "Supported manufacturers: Dell, HP/Hewlett-Packard, Lenovo" -ForegroundColor Yellow
+        Write-Host "Supported manufacturers: Dell, HP/Hewlett-Packard" -ForegroundColor Yellow
         Write-Host "System detected: $manufacturer $model" -ForegroundColor Gray
         
         # Provide helpful guidance
