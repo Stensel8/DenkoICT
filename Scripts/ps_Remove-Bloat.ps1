@@ -125,7 +125,7 @@ function Remove-ProvisionedByPattern {
                 Log "Successfully removed provisioned package: $packageName"
                 $Succeeded.Add("Removed provisioned: $packageName") | Out-Null
             } catch {
-                Log "Failed to remove provisioned package $($packageName): $($_.Exception.Message)"
+                Log "Failed to remove provisioned package $packageName: $($_.Exception.Message)"
                 $Failed.Add("Failed to remove provisioned: $packageName") | Out-Null
             }
         }
