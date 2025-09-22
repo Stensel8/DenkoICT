@@ -197,7 +197,11 @@ function Update-HPDrivers {
         
         if ($wingetAvailable) {
             # Install HP Image Assistant via WinGet
-            $hpiaInstall = winget install --id HP.ImageAssistant -e --accept-source-agreements --accept-package-agreements --silent
+            $wingetArgs = "install --id HP.ImageAssistant -e --accept-source-agreements --accept-package-agreements --silent"
+            $hpiaInstallProcess = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -Wait -PassThru -WindowStyle Hidden
+            if ($hpiaInstallProcess.ExitCode -ne 0) {
+                Write-Warning "Failed to install HP Image Assistant via WinGet. Exit code: $($hpiaInstallProcess.ExitCode)"
+            }
         } else {
             Write-Warning "WinGet not available - skipping HP Image Assistant installation"
         }
