@@ -1,25 +1,17 @@
 <#
 .SYNOPSIS
-    Install vendor driver update tools and run updates
+    Install vendor driver update tools and run updates for Dell and HP systems.
 .DESCRIPTION
     Detects system manufacturer and runs appropriate driver update tool:
     - Dell: Dell Command Update
-    - HP: HP Client Management Script Library (HP CMSL) - supports all HP models including ProBook, EliteBook, and ZBook
-    - Lenovo: Lenovo System Update
-    
-    The HP implementation now includes:
-    - Proper use of Get-Softpaq cmdlet for downloading drivers
-    - Silent installation with multiple exit code handling
-    - Retry mechanisms with exponential backoff
-    - Progress tracking and detailed logging
-    - BIOS/Firmware update detection (reports only, manual installation required)
-    - Enhanced error handling and troubleshooting information
+    - HP: HP Client Management Script Library (HP CMSL) - supports all enterprise HP models including ProBook, EliteBook, and ZBook
     
 .NOTES
     - HP CMSL requires PowerShell to be run as Administrator for module installation and driver updates
+    - Platform-specific detection ensures only compatible drivers are downloaded and installed
     - Firmware/BIOS updates are detected but not automatically installed for safety reasons
-    - The script uses proper HP CMSL cmdlets: Get-Softpaq, Get-SoftpaqList, Get-HPBIOSUpdates
     - Supports various installation exit codes (0, 1641, 3010) for successful installations
+    - Uses CurrentUser scope for module installation to avoid permission issues
 .EXAMPLE
     .\ps_Install-Drivers.ps1
     Runs the appropriate driver update tool based on detected system manufacturer
@@ -102,15 +94,21 @@ function Update-HPDrivers {
             Write-Host "HP CMSL modules not found. Installing..." -ForegroundColor Cyan
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             
-            # HP recommended installation method
+            # HP recommended installation method - Modern approach for HPCMSL 1.8.x+
             $installScript = @"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Install-PackageProvider -Name NuGet -Force
-Install-Module -Name PowerShellGet -Force -SkipPublisherCheck
-# Exit to resolve command resolution issues as per HP documentation
-Start-Sleep -Seconds 2
-# Install HP CMSL with AcceptLicense as per HP documentation
-Install-Module -Name HPCMSL -AcceptLicense -Force -SkipPublisherCheck
+# Install NuGet provider if not available
+if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+    Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
+}
+# Update PowerShellGet to support modern features
+if ((Get-Module PowerShellGet -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).Version -lt [Version]'2.0.0') {
+    Install-Module -Name PowerShellGet -Force -SkipPublisherCheck -Scope CurrentUser
+}
+# Install latest HPCMSL with modern parameters
+Install-Module -Name HPCMSL -AcceptLicense -Force -SkipPublisherCheck -Scope CurrentUser -AllowClobber
+# Import the module to verify installation
+Import-Module HPCMSL -Force
 "@
             
             $scriptPath = "$env:TEMP\Install-HPCMSL.ps1"
@@ -129,8 +127,9 @@ Install-Module -Name HPCMSL -AcceptLicense -Force -SkipPublisherCheck
                 New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
                 
                 try {
-                    # Download latest HP CMSL installer
-                    $cmslUrl = "https://hpia.hpcloud.hp.com/downloads/cmsl/hp-cmsl-1.7.2.exe"
+                    # Download latest HP CMSL installer - Updated to use latest version
+                    # Note: HP CMSL 1.8.x+ is the current version with improved cmdlets and stability
+                    $cmslUrl = "https://hpia.hpcloud.hp.com/downloads/cmsl/hp-cmsl-1.8.1.exe"
                     $installerPath = "$tempDir\hp-cmsl.exe"
                     
                     Write-Host "Downloading HP CMSL installer..." -ForegroundColor Cyan
@@ -201,8 +200,15 @@ Install-Module -Name HPCMSL -AcceptLicense -Force -SkipPublisherCheck
         
         Write-Host "Detecting available HP driver updates..." -ForegroundColor Cyan
         
-        # Get available softpaqs (drivers) for this system
-        $softpaqs = Get-SoftpaqList -Category Driver -Characteristic SSM
+        # Get available softpaqs (drivers) for this system using modern HPCMSL parameters
+        # Updated for HPCMSL 1.8.x+ with improved filtering and error handling
+        try {
+            $softpaqs = Get-SoftpaqList -Category Driver -Characteristic SSM -Platform (Get-HPDeviceProductID) -OS (Get-HPOS) -OSVer (Get-HPOSVersion)
+        } catch {
+            Write-Warning "Failed to get platform-specific updates, trying generic approach: $($_.Exception.Message)"
+            # Fallback to basic approach if platform detection fails
+            $softpaqs = Get-SoftpaqList -Category Driver -Characteristic SSM
+        }
         
         if ($softpaqs -and $softpaqs.Count -gt 0) {
             Write-Host "Found $($softpaqs.Count) driver updates available" -ForegroundColor Green
@@ -228,13 +234,19 @@ Install-Module -Name HPCMSL -AcceptLicense -Force -SkipPublisherCheck
                 
                 try {
                     
-                    # Download the softpaq using Get-Softpaq with retry
+                    # Download the softpaq using Get-Softpaq with modern parameters and retry
                     $downloadPath = Join-Path $tempPath "$($softpaq.Id).exe"
                     
                     $downloadSuccess = Invoke-WithRetry -OperationName "Download $($softpaq.Id)" -ScriptBlock {
-                        Get-Softpaq -Number $softpaq.Id -SaveAs $downloadPath
+                        # Use modern HPCMSL 1.8.x+ parameters with better error handling
+                        Get-Softpaq -Number $softpaq.Id -SaveAs $downloadPath -Overwrite -LaunchExtractedInstaller:$false
                         if (-not (Test-Path $downloadPath)) {
                             throw "Downloaded file not found at $downloadPath"
+                        }
+                        # Verify file integrity if possible
+                        $fileInfo = Get-Item $downloadPath
+                        if ($fileInfo.Length -lt 1KB) {
+                            throw "Downloaded file appears corrupted (size: $($fileInfo.Length) bytes)"
                         }
                         return $true
                     }
@@ -300,39 +312,48 @@ Install-Module -Name HPCMSL -AcceptLicense -Force -SkipPublisherCheck
             Write-Host "No HP driver updates available for this system" -ForegroundColor Green
         }
         
-        # Check for BIOS/firmware updates
+        # Check for BIOS/firmware updates using modern HPCMSL 1.8.x+ cmdlets
         Write-Host "`nChecking for HP BIOS/Firmware updates..." -ForegroundColor Cyan
         
         try {
-            # Get available BIOS updates
-            $biosUpdates = Get-HPBIOSUpdates -ErrorAction SilentlyContinue
+            # Get current BIOS information first
+            $currentBIOS = Get-HPBIOSVersion -ErrorAction SilentlyContinue
+            Write-Host "Current BIOS Version: $currentBIOS" -ForegroundColor Gray
+            
+            # Get available BIOS updates using modern approach
+            $biosUpdates = Get-HPBIOSUpdates -Check -ErrorAction SilentlyContinue
             
             if ($biosUpdates -and $biosUpdates.Count -gt 0) {
                 Write-Host "Found $($biosUpdates.Count) BIOS/Firmware updates available" -ForegroundColor Green
                 
                 foreach ($update in $biosUpdates) {
                     Write-Host "Available BIOS update: $($update.Name) - Version: $($update.Version)" -ForegroundColor Yellow
-                    Write-Host "  Current BIOS: $(Get-HPBIOSVersion)" -ForegroundColor Gray
+                    Write-Host "  Release Date: $($update.ReleaseDate)" -ForegroundColor Gray
                     
                     # For safety, we'll just report firmware updates rather than auto-install
                     # Firmware updates are more critical and should be done carefully
-                    Write-Host "  \u26A0  BIOS/Firmware updates detected but not auto-installed for safety" -ForegroundColor Yellow
-                    Write-Host "  \u26A0  Please run 'Update-HPFirmware' manually to install BIOS updates" -ForegroundColor Yellow
+                    Write-Host "  ⚠  BIOS/Firmware updates detected but not auto-installed for safety" -ForegroundColor Yellow
+                    Write-Host "  ⚠  Please run 'Get-HPBIOSUpdates | Install-HPBIOSUpdate' manually to install BIOS updates" -ForegroundColor Yellow
                 }
             } else {
                 Write-Host "BIOS/Firmware is up to date" -ForegroundColor Green
             }
             
-            # Also check for other firmware updates using Get-SoftpaqList
-            $firmwareSoftpaqs = Get-SoftpaqList -Category Firmware -Characteristic SSM -ErrorAction SilentlyContinue
+            # Also check for other firmware updates using modern Get-SoftpaqList approach
+            try {
+                $firmwareSoftpaqs = Get-SoftpaqList -Category Firmware -Characteristic SSM -Platform (Get-HPDeviceProductID) -OS (Get-HPOS) -OSVer (Get-HPOSVersion) -ErrorAction SilentlyContinue
+            } catch {
+                # Fallback to basic approach if platform detection fails
+                $firmwareSoftpaqs = Get-SoftpaqList -Category Firmware -Characteristic SSM -ErrorAction SilentlyContinue
+            }
             
             if ($firmwareSoftpaqs -and $firmwareSoftpaqs.Count -gt 0) {
                 Write-Host "`nFound $($firmwareSoftpaqs.Count) additional firmware updates available:" -ForegroundColor Yellow
                 foreach ($fw in $firmwareSoftpaqs) {
-                    Write-Host "  - $($fw.Name) ($($fw.Id))" -ForegroundColor Gray
+                    Write-Host "  - $($fw.Name) ($($fw.Id)) - Version: $($fw.Version)" -ForegroundColor Gray
                 }
-                Write-Host "  \u26A0  Firmware updates require manual review and installation" -ForegroundColor Yellow
-                Write-Host "  \u26A0  Use 'Get-Softpaq -Number <ID>' and install manually" -ForegroundColor Yellow
+                Write-Host "  ⚠  Firmware updates require manual review and installation" -ForegroundColor Yellow
+                Write-Host "  ⚠  Use 'Get-Softpaq -Number <ID> -Download' and install manually" -ForegroundColor Yellow
             }
             
         } catch {
