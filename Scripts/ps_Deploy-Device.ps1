@@ -61,17 +61,17 @@ try {
     Write-DeploymentLog "Applications installation error: $($_.Exception.Message)" "ERROR"
 }
 
-Write-DeploymentLog "Starting Personalization Setup..." "INFO"
-Write-Host "[4/4] Setting Personalization..." -ForegroundColor Cyan
+Write-DeploymentLog "Setting Wallpaper..." "INFO"
+Write-Host "[4/4] Setting Wallpaper..." -ForegroundColor Cyan
 try {
-    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Set-Personalization.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Set-Wallpaper.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
     if ($process.ExitCode -eq 0) {
-        Write-DeploymentLog "Personalization setup completed successfully" "INFO"
+        Write-DeploymentLog "Wallpaper setup completed successfully" "INFO"
     } else {
-        Write-DeploymentLog "Personalization setup failed with exit code: $($process.ExitCode)" "ERROR"
+        Write-DeploymentLog "Wallpaper setup failed with exit code: $($process.ExitCode)" "ERROR"
     }
 } catch {
-    Write-DeploymentLog "Personalization setup error: $($_.Exception.Message)" "ERROR"
+    Write-DeploymentLog "Wallpaper setup error: $($_.Exception.Message)" "ERROR"
 }
 
 Write-DeploymentLog "=== Denko ICT Device Deployment Completed ===" "INFO"
