@@ -49,7 +49,6 @@ try {
 }
 
 # Get system info with multiple fallback methods for compatibility
-# Get system info with multiple fallback methods for compatibility
 $manufacturer = "unknown"
 $model = "unknown"
 
