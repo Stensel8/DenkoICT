@@ -58,8 +58,33 @@ function Update-HPDrivers {
         # Check if HPCMSL module is installed
         if (-not (Get-Module -ListAvailable -Name HPCMSL)) {
             Write-Host "Installing HPCMSL PowerShell module..." -ForegroundColor Cyan
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers | Out-Null
-            Install-Module -Name HPCMSL -Force -Scope AllUsers -AllowClobber | Out-Null
+            
+            # Ensure TLS 1.2 is available for secure downloads
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            
+            # Update PowerShellGet and PackageManagement to support newer module formats
+            Write-Host "Updating PowerShellGet and PackageManagement..." -ForegroundColor Cyan
+            try {
+                Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction Stop | Out-Null
+                Install-Module -Name PowerShellGet -Force -Scope AllUsers -AllowClobber -ErrorAction Stop | Out-Null
+                Install-Module -Name PackageManagement -Force -Scope AllUsers -AllowClobber -ErrorAction Stop | Out-Null
+                
+                # Import the updated modules
+                Import-Module PowerShellGet -Force -ErrorAction Stop
+                Import-Module PackageManagement -Force -ErrorAction Stop
+                
+                # Now install HPCMSL
+                Write-Host "Installing HPCMSL module..." -ForegroundColor Cyan
+                Install-Module -Name HPCMSL -Force -Scope AllUsers -AllowClobber -ErrorAction Stop | Out-Null
+                
+            } catch {
+                Write-Warning "Failed to update PowerShell modules: $($_.Exception.Message)"
+                Write-Host "Attempting alternative HPCMSL installation method..." -ForegroundColor Yellow
+                
+                # Alternative: Try installing from PSGallery with specific repository
+                Register-PSRepository -Name PSGallery -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+                Install-Module -Name HPCMSL -Repository PSGallery -Force -Scope AllUsers -AllowClobber -SkipPublisherCheck | Out-Null
+            }
         }
         
         # Import the module
