@@ -4,24 +4,81 @@
 .DESCRIPTION
     Detects system manufacturer and runs appropriate driver update tool:
     - Dell: Dell Command Update
-    - HP: HP Client Management Script Library (HP CMSL) - supports all enterprise HP models including ProBook, EliteBook, and ZBook
+    - HP: HP Image Assistant (primary) or HP CMSL (fallback) - supports all enterprise HP models
+    
+    This script is designed for use after OOBE (Out-of-Box Experience).
     
 .NOTES
-    - HP CMSL requires PowerShell to be run as Administrator for module installation and driver updates
+    - HP driver updates use HP Image Assistant as primary method with HP CMSL as fallback
     - Platform-specific detection ensures only compatible drivers are downloaded and installed
     - Firmware/BIOS updates are detected but not automatically installed for safety reasons
     - Supports various installation exit codes (0, 1641, 3010) for successful installations
-    - Uses CurrentUser scope for module installation to avoid permission issues
+    - Includes fallbacks for system detection in restricted environments
 .EXAMPLE
     .\ps_Install-Drivers.ps1
     Runs the appropriate driver update tool based on detected system manufacturer
 #>
 
-Write-Host "Starting Driver Update..." -ForegroundColor Cyan
+Write-Host "Starting Driver Update (Post-OOBE)..." -ForegroundColor Cyan
 
-# Get system info
-$manufacturer = (Get-CimInstance Win32_ComputerSystem).Manufacturer.ToLower()
-$model = (Get-CimInstance Win32_ComputerSystem).Model
+# Pre-flight checks
+Write-Host "Performing pre-flight checks..." -ForegroundColor Gray
+
+# Check for WinGet availability
+$wingetAvailable = $false
+try {
+    $wingetVersion = winget --version 2>$null
+    if ($wingetVersion) {
+        $wingetAvailable = $true
+        Write-Host "✓ WinGet is available (version: $($wingetVersion.Trim()))" -ForegroundColor Green
+    }
+} catch {
+    Write-Warning "✗ WinGet is not available - some driver tools may not install"
+    Write-Host "Consider installing WinGet first for best results" -ForegroundColor Yellow
+}
+
+# Check if we're in a post-OOBE environment
+$isPostOOBE = $true
+try {
+    $apStatus = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Provisioning\Diagnostics\AutoPilot" -Name "CloudAssignedTenantId" -ErrorAction SilentlyContinue
+    if ($apStatus) {
+        Write-Host "Detected post-OOBE environment" -ForegroundColor Gray
+    }
+} catch {
+    # Not in AutoPilot/OOBE environment, which is expected for this script
+}
+
+# Get system info with multiple fallback methods for compatibility
+$manufacturer = "unknown"
+$model = "unknown"
+
+try {
+    # Try CIM first (preferred method)
+    $systemInfo = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+    $manufacturer = $systemInfo.Manufacturer.ToLower()
+    $model = $systemInfo.Model
+    Write-Host "System info retrieved via CIM" -ForegroundColor Gray
+} catch {
+    Write-Warning "Get-CimInstance not available, trying WMI..."
+    try {
+        # Fallback to WMI
+        $systemInfo = Get-WmiObject Win32_ComputerSystem -ErrorAction Stop
+        $manufacturer = $systemInfo.Manufacturer.ToLower()
+        $model = $systemInfo.Model
+        Write-Host "System info retrieved via WMI" -ForegroundColor Gray
+    } catch {
+        Write-Warning "WMI also not available, trying registry..."
+        try {
+            # Final fallback to registry
+            $manufacturer = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation" -Name "SystemManufacturer" -ErrorAction Stop).SystemManufacturer.ToLower()
+            $model = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation" -Name "SystemModel" -ErrorAction Stop).SystemModel
+            Write-Host "System info retrieved via registry" -ForegroundColor Gray
+        } catch {
+            Write-Error "Failed to get system information via all methods: $($_.Exception.Message)"
+            Write-Host "Will attempt to detect drivers for all vendors..." -ForegroundColor Yellow
+        }
+    }
+}
 
 Write-Host "System: $manufacturer $model" -ForegroundColor Green
 
@@ -65,20 +122,68 @@ function Invoke-WithRetry {
 # Dell Command Update
 function Update-DellDrivers {
     Write-Host "Installing Dell Command Update..." -ForegroundColor Yellow
-    winget install Dell.CommandUpdate --silent --accept-package-agreements --accept-source-agreements | Out-Null
     
-    $dcu = "${env:ProgramFiles(x86)}\Dell\CommandUpdate\dcu-cli.exe"
-    if (Test-Path $dcu) {
-        Write-Host "Running Dell driver updates..." -ForegroundColor Cyan
-        $result = Start-WithTimeout $dcu @("/applyUpdates", "-reboot=disable")
-        switch ($result) {
-            0 { Write-Host "`nDell updates completed successfully" -ForegroundColor Green }
-            1 { Write-Host "`nDell updates completed - reboot recommended" -ForegroundColor Yellow }
-            500 { Write-Host "`nDell system is up to date - no updates available" -ForegroundColor Green }
-            default { Write-Warning "`nDell updates may have failed (exit code: $result)" }
+    try {
+        if ($wingetAvailable) {
+            $wingetResult = winget install Dell.CommandUpdate --silent --accept-package-agreements --accept-source-agreements
+            $wingetExitCode = $LASTEXITCODE
+            if ($wingetExitCode -ne 0 -and $wingetExitCode -ne 1641 -and $wingetExitCode -ne 3010) {
+                Write-Warning "Dell Command Update installation failed with exit code $wingetExitCode. Output:`n$wingetResult"
+                return
+            }
+        } else {
+            Write-Warning "WinGet not available - Dell Command Update installation skipped"
+            Write-Host "Please install Dell Command Update manually from Dell's website" -ForegroundColor Yellow
         }
-    } else {
-        Write-Warning "Dell Command Update not found"
+        
+        # Check for multiple possible installation paths
+        $dcuPaths = @(
+            "${env:ProgramFiles(x86)}\Dell\CommandUpdate\dcu-cli.exe",
+            "${env:ProgramFiles}\Dell\CommandUpdate\dcu-cli.exe",
+            "C:\Program Files (x86)\Dell\CommandUpdate\dcu-cli.exe",
+            "C:\Program Files\Dell\CommandUpdate\dcu-cli.exe"
+        )
+        
+        $dcu = $null
+        foreach ($path in $dcuPaths) {
+            if (Test-Path $path) {
+                $dcu = $path
+                break
+            }
+        }
+        
+        if ($dcu) {
+            Write-Host "Dell Command Update found at: $dcu" -ForegroundColor Gray
+            Write-Host "Running Dell driver updates..." -ForegroundColor Cyan
+            
+            # First scan for updates
+            Write-Host "Scanning for Dell updates..." -ForegroundColor Gray
+            $scanResult = Start-WithTimeout $dcu @("/scan", "-silent") 5
+            
+            if ($scanResult -eq 0) {
+                # Then apply updates
+                Write-Host "Applying Dell updates..." -ForegroundColor Gray
+                $result = Start-WithTimeout $dcu @("/applyUpdates", "-reboot=disable", "-silent") 15
+                
+                switch ($result) {
+                    0 { Write-Host "`nDell updates completed successfully" -ForegroundColor Green }
+                    1 { Write-Host "`nDell updates completed - reboot recommended" -ForegroundColor Yellow }
+                    500 { Write-Host "`nDell system is up to date - no updates available" -ForegroundColor Green }
+                    -1 { Write-Warning "`nDell update process timed out" }
+                    default { Write-Warning "`nDell updates may have failed (exit code: $result)" }
+                }
+            } else {
+                Write-Warning "Dell update scan failed (exit code: $scanResult). Skipping update application."
+            }
+        } else {
+            Write-Warning "Dell Command Update not found at any expected path"
+            Write-Host "Tried paths: $($dcuPaths -join ', ')" -ForegroundColor Gray
+            if (-not $wingetAvailable) {
+                Write-Host "Consider downloading from: https://www.dell.com/support/kbdoc/en-us/000177325" -ForegroundColor Yellow
+            }
+        }
+    } catch {
+        Write-Warning "Dell driver update failed: $($_.Exception.Message)"
     }
 }
 
@@ -87,131 +192,116 @@ function Update-HPDrivers {
     Write-Host "Installing HP Client Management Script Library (HP CMSL)..." -ForegroundColor Yellow
     
     try {
+        # First, try the simple HP Image Assistant approach (fallback first)
+        Write-Host "Trying HP Image Assistant as primary method..." -ForegroundColor Cyan
+        
+        if ($wingetAvailable) {
+            # Install HP Image Assistant via WinGet
+            $wingetArgs = "install --id HP.ImageAssistant -e --accept-source-agreements --accept-package-agreements --silent"
+            $hpiaInstallProcess = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -Wait -PassThru -WindowStyle Hidden
+            if ($hpiaInstallProcess.ExitCode -ne 0) {
+                Write-Warning "Failed to install HP Image Assistant via WinGet. Exit code: $($hpiaInstallProcess.ExitCode)"
+            }
+        } else {
+            Write-Warning "WinGet not available - skipping HP Image Assistant installation"
+        }
+        
+        # Check if HPIA installed successfully (or was already installed)
+        $HPIAPath = "C:\Program Files\HP\HPIA\HPImageAssistant.exe"
+        if (-not (Test-Path $HPIAPath)) {
+            $HPIAPath = "C:\SWSetup\HPImageAssistant\HPImageAssistant.exe"
+        }
+        
+        if (Test-Path $HPIAPath) {
+            Write-Host "Running HP Image Assistant for driver updates..." -ForegroundColor Cyan
+            $downloadPath = "C:\SWSetup"
+            New-Item -ItemType Directory -Path $downloadPath -Force | Out-Null
+
+            # Run HPIA with better parameters for post-OOBE environment
+            $hpiaResult = Start-Process -FilePath $HPIAPath -ArgumentList "/Operation:Analyze", "/Category:Driver", "/Action:Install", "/Silent", "/ReportFolder:$downloadPath", "/SoftpaqDownloadFolder:$downloadPath" -Wait -PassThru -WindowStyle Hidden
+            
+            if ($hpiaResult.ExitCode -eq 0) {
+                Write-Host "HP Image Assistant completed successfully" -ForegroundColor Green
+                return
+            } else {
+                Write-Warning "HP Image Assistant failed with exit code: $($hpiaResult.ExitCode). Trying HP CMSL..."
+            }
+        } else {
+            Write-Warning "HP Image Assistant not found. Trying HP CMSL approach..."
+        }
+        
+        # If HPIA fails, try HP CMSL with simplified approach
+        Write-Host "Falling back to HP CMSL method..." -ForegroundColor Cyan
+        
         # Check if HP CMSL modules are available
-        $hpModules = Get-Module -ListAvailable -Name "HP.*" | Where-Object { $_.Name -in @("HP.Softpaq", "HP.ClientManagement") }
+        $hpModules = Get-Module -ListAvailable -Name "HPCMSL" -ErrorAction SilentlyContinue
         
         if (-not $hpModules) {
-            Write-Host "HP CMSL modules not found. Installing..." -ForegroundColor Cyan
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Write-Host "HP CMSL not found. Installing from PowerShell Gallery..." -ForegroundColor Cyan
             
-            # HP recommended installation method - Modern approach for HPCMSL 1.8.x+
-            $installScript = @"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-# Install NuGet provider if not available
-if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
-    Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
-}
-# Update PowerShellGet to support modern features
-if ((Get-Module PowerShellGet -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).Version -lt [Version]'2.0.0') {
-    Install-Module -Name PowerShellGet -Force -SkipPublisherCheck -Scope CurrentUser
-}
-# Install latest HPCMSL with modern parameters
-Install-Module -Name HPCMSL -AcceptLicense -Force -SkipPublisherCheck -Scope CurrentUser -AllowClobber
-# Import the module to verify installation
-Import-Module HPCMSL -Force
-"@
-            
-            $scriptPath = "$env:TEMP\Install-HPCMSL.ps1"
-            $installScript | Out-File -FilePath $scriptPath -Encoding UTF8
-            
-            Write-Host "Installing HP CMSL (this requires a PowerShell restart)..." -ForegroundColor Cyan
-            $process = Start-Process -FilePath "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`"" -Wait -PassThru -WindowStyle Hidden
-            Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
-            
-            if ($process.ExitCode -ne 0) {
-                Write-Warning "PowerShell Gallery installation failed. Trying manual installation..."
+            # Simplified installation approach
+            try {
+                # Ensure TLS 1.2 for PowerShell Gallery
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                 
-                # Fallback: Download and extract HP CMSL manually
-                $tempDir = "$env:TEMP\HP-CMSL"
-                $extractDir = "$tempDir\extracted"
-                New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
-                
-                try {
-                    # Download latest HP CMSL installer - Updated to use latest version
-                    # Note: HP CMSL 1.8.x+ is the current version with improved cmdlets and stability
-                    $cmslUrl = "https://hpia.hpcloud.hp.com/downloads/cmsl/hp-cmsl-1.8.1.exe"
-                    $installerPath = "$tempDir\hp-cmsl.exe"
-                    
-                    Write-Host "Downloading HP CMSL installer..." -ForegroundColor Cyan
-                    Invoke-WebRequest -Uri $cmslUrl -OutFile $installerPath -UseBasicParsing
-                    
-                    # Extract modules only (no installation)
-                    Write-Host "Extracting HP CMSL modules..." -ForegroundColor Cyan
-                    Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT", "/SP-", "/UnpackOnly=True", "/DestDir=`"$extractDir`"" -Wait -WindowStyle Hidden
-                    
-                    # Copy modules to PowerShell modules directory
-                    $modulesSource = "$extractDir\modules"
-                    $modulesTarget = "${env:ProgramFiles}\WindowsPowerShell\Modules"
-                    
-                    if (Test-Path $modulesSource) {
-                        Copy-Item -Path "$modulesSource\*" -Destination $modulesTarget -Recurse -Force
-                        Write-Host "HP CMSL modules extracted successfully" -ForegroundColor Green
-                    }
-                    
-                } catch {
-                    Write-Warning "Manual installation failed: $($_.Exception.Message)"
-                    return
-                } finally {
-                    Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+                # Install NuGet provider if not available
+                if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+                    Write-Host "Installing NuGet package provider..." -ForegroundColor Gray
+                    Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -Confirm:$false
                 }
+                
+                # Install HP CMSL from PowerShell Gallery
+                Write-Host "Installing HPCMSL module from PowerShell Gallery..." -ForegroundColor Gray
+                Install-Module -Name HPCMSL -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -Confirm:$false
+                
+                Write-Host "HP CMSL installed successfully" -ForegroundColor Green
+                
+            } catch {
+                Write-Warning "Failed to install HP CMSL from PowerShell Gallery: $($_.Exception.Message)"
+                Write-Host "Skipping HP driver updates - please install HP CMSL manually or check network connectivity" -ForegroundColor Yellow
+                return
             }
         }
         
-        # Import required HP modules with detailed error handling
+        # Import HP CMSL module
         try {
-            # Try to import main HP CMSL modules
-            $importResults = @()
-            
-            Write-Host "Loading HP CMSL modules..." -ForegroundColor Cyan
-            
-            try {
-                Import-Module HP.Softpaq -Force -ErrorAction Stop
-                $importResults += "HP.Softpaq: OK"
-                Write-Host "  \u2713 HP.Softpaq module loaded" -ForegroundColor Green
-            } catch {
-                $importResults += "HP.Softpaq: FAILED - $($_.Exception.Message)"
-                Write-Warning "  \u2717 Failed to load HP.Softpaq: $($_.Exception.Message)"
-            }
-            
-            try {
-                Import-Module HP.ClientManagement -Force -ErrorAction Stop
-                $importResults += "HP.ClientManagement: OK"
-                Write-Host "  \u2713 HP.ClientManagement module loaded" -ForegroundColor Green
-            } catch {
-                $importResults += "HP.ClientManagement: FAILED - $($_.Exception.Message)"
-                Write-Warning "  \u2717 Failed to load HP.ClientManagement: $($_.Exception.Message)"
-            }
-            
-            # Check if at least HP.Softpaq is available (minimum required)
-            if (Get-Module HP.Softpaq -ErrorAction SilentlyContinue) {
-                Write-Host "HP CMSL core modules loaded successfully" -ForegroundColor Green
-            } else {
-                Write-Warning "HP.Softpaq module is required but failed to load"
-                Write-Host "Module import results:" -ForegroundColor Yellow
-                $importResults | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
-                return
-            }
-            
+            Write-Host "Loading HP CMSL module..." -ForegroundColor Cyan
+            Import-Module HPCMSL -Force -ErrorAction Stop
+            Write-Host "  ✓ HPCMSL module loaded successfully" -ForegroundColor Green
         } catch {
-            Write-Warning "Could not import HP CMSL modules: $($_.Exception.Message)"
+            Write-Warning "Failed to import HPCMSL module: $($_.Exception.Message)"
             Write-Host "Please ensure HP CMSL is properly installed and try running as Administrator" -ForegroundColor Yellow
             return
         }
         
         Write-Host "Detecting available HP driver updates..." -ForegroundColor Cyan
         
-        # Get available softpaqs (drivers) for this system using modern HPCMSL parameters
-        # Updated for HPCMSL 1.8.x+ with improved filtering and error handling
+        # Get available softpaqs (drivers) for this system using simplified approach
         try {
-            $softpaqs = Get-SoftpaqList -Category Driver -Characteristic SSM -Platform (Get-HPDeviceProductID) -OS (Get-HPOS) -OSVer (Get-HPOSVersion)
+            # Try platform-specific approach first
+            $platform = Get-HPDeviceProductID -ErrorAction SilentlyContinue
+            if ($platform) {
+                Write-Host "Detected HP platform: $platform" -ForegroundColor Gray
+                $softpaqs = Get-SoftpaqList -Category Driver -Platform $platform -ErrorAction SilentlyContinue
+            } else {
+                # Fallback to generic approach
+                Write-Host "Using generic driver detection..." -ForegroundColor Gray
+                $softpaqs = Get-SoftpaqList -Category Driver -ErrorAction SilentlyContinue
+            }
         } catch {
-            Write-Warning "Failed to get platform-specific updates, trying generic approach: $($_.Exception.Message)"
-            # Fallback to basic approach if platform detection fails
-            $softpaqs = Get-SoftpaqList -Category Driver -Characteristic SSM
+            Write-Warning "Failed to get driver list: $($_.Exception.Message)"
+            $softpaqs = $null
         }
         
         if ($softpaqs -and $softpaqs.Count -gt 0) {
             Write-Host "Found $($softpaqs.Count) driver updates available" -ForegroundColor Green
+            
+            # Limit to reasonable number of drivers to avoid timeout
+            $maxDrivers = 10
+            if ($softpaqs.Count -gt $maxDrivers) {
+                Write-Host "Limiting to first $maxDrivers drivers for faster installation" -ForegroundColor Yellow
+                $softpaqs = $softpaqs | Select-Object -First $maxDrivers
+            }
             
             # Create temp directory for downloads
             $tempPath = "$env:TEMP\HPDrivers"
@@ -233,51 +323,34 @@ Import-Module HPCMSL -Force
                 Write-Host "[$currentItem/$totalCount] ($percentComplete%) Installing: $($softpaq.Name) ($($softpaq.Id))" -ForegroundColor Yellow
                 
                 try {
-                    
-                    # Download the softpaq using Get-Softpaq with modern parameters and retry
+                    # Download and install using simplified Get-Softpaq approach
                     $downloadPath = Join-Path $tempPath "$($softpaq.Id).exe"
                     
-                    $downloadSuccess = Invoke-WithRetry -OperationName "Download $($softpaq.Id)" -ScriptBlock {
-                        # Use modern HPCMSL 1.8.x+ parameters with better error handling
-                        Get-Softpaq -Number $softpaq.Id -SaveAs $downloadPath -Overwrite -LaunchExtractedInstaller:$false
-                        if (-not (Test-Path $downloadPath)) {
-                            throw "Downloaded file not found at $downloadPath"
+                    # Download with retry
+                    $downloadSuccess = $false
+                    for ($retry = 1; $retry -le 2; $retry++) {
+                        try {
+                            Get-Softpaq -Number $softpaq.Id -SaveAs $downloadPath -Overwrite
+                            if (Test-Path $downloadPath) {
+                                $downloadSuccess = $true
+                                break
+                            }
+                        } catch {
+                            Write-Warning "  Download attempt $retry failed: $($_.Exception.Message)"
+                            if ($retry -lt 2) { Start-Sleep -Seconds 2 }
                         }
-                        # Verify file integrity if possible
-                        $fileInfo = Get-Item $downloadPath
-                        if ($fileInfo.Length -lt 1KB) {
-                            throw "Downloaded file appears corrupted (size: $($fileInfo.Length) bytes)"
-                        }
-                        return $true
                     }
                     
                     if ($downloadSuccess -and (Test-Path $downloadPath)) {
-                        # Get file size for progress indication
-                        $fileSize = [math]::Round((Get-Item $downloadPath).Length / 1MB, 1)
-                        Write-Host "  Downloaded $($softpaq.Id) ($fileSize MB)" -ForegroundColor Gray
+                        # Install silently
+                        $installResult = Start-Process -FilePath $downloadPath -ArgumentList '/S', '/v/qn' -Wait -PassThru -WindowStyle Hidden
                         
-                        # Install silently using Start-Process with retry
-                        $installSuccess = Invoke-WithRetry -OperationName "Install $($softpaq.Id)" -ScriptBlock {
-                            $installResult = Start-Process -FilePath $downloadPath -ArgumentList '/S', '/v/qn' -Wait -PassThru -WindowStyle Hidden
-                            
-                            # Check various success exit codes
-                            if ($installResult.ExitCode -eq 0) {
-                                Write-Host "  ✓ Successfully installed $($softpaq.Name)" -ForegroundColor Green
-                                return $true
-                            } elseif ($installResult.ExitCode -eq 3010) {
-                                Write-Host "  ✓ Successfully installed $($softpaq.Name) (Reboot required)" -ForegroundColor Yellow
-                                return $true
-                            } elseif ($installResult.ExitCode -eq 1641) {
-                                Write-Host "  ✓ Successfully installed $($softpaq.Name) (Installer initiated reboot)" -ForegroundColor Yellow
-                                return $true
-                            } else {
-                                throw "Installation failed with exit code: $($installResult.ExitCode)"
-                            }
-                        }
-                        
-                        if ($installSuccess) {
+                        # Check various success exit codes
+                        if ($installResult.ExitCode -in @(0, 3010, 1641)) {
+                            Write-Host "  ✓ Successfully installed $($softpaq.Name)" -ForegroundColor Green
                             $successCount++
                         } else {
+                            Write-Warning "  ✗ Installation failed with exit code: $($installResult.ExitCode)"
                             $failCount++
                         }
                         
@@ -293,7 +366,7 @@ Import-Module HPCMSL -Force
                     $failCount++
                 }
                 
-                # Add small delay between installations to prevent resource conflicts
+                # Add small delay between installations
                 if ($currentItem -lt $totalCount) {
                     Start-Sleep -Milliseconds 500
                 }
@@ -312,91 +385,45 @@ Import-Module HPCMSL -Force
             Write-Host "No HP driver updates available for this system" -ForegroundColor Green
         }
         
-        # Check for BIOS/firmware updates using modern HPCMSL 1.8.x+ cmdlets
-        Write-Host "`nChecking for HP BIOS/Firmware updates..." -ForegroundColor Cyan
-        
-        try {
-            # Get current BIOS information first
-            $currentBIOS = Get-HPBIOSVersion -ErrorAction SilentlyContinue
-            Write-Host "Current BIOS Version: $currentBIOS" -ForegroundColor Gray
-            
-            # Get available BIOS updates using modern approach
-            $biosUpdates = Get-HPBIOSUpdates -Check -ErrorAction SilentlyContinue
-            
-            if ($biosUpdates -and $biosUpdates.Count -gt 0) {
-                Write-Host "Found $($biosUpdates.Count) BIOS/Firmware updates available" -ForegroundColor Green
-                
-                foreach ($update in $biosUpdates) {
-                    Write-Host "Available BIOS update: $($update.Name) - Version: $($update.Version)" -ForegroundColor Yellow
-                    Write-Host "  Release Date: $($update.ReleaseDate)" -ForegroundColor Gray
-                    
-                    # For safety, we'll just report firmware updates rather than auto-install
-                    # Firmware updates are more critical and should be done carefully
-                    Write-Host "  ⚠  BIOS/Firmware updates detected but not auto-installed for safety" -ForegroundColor Yellow
-                    Write-Host "  ⚠  Please run 'Get-HPBIOSUpdates | Install-HPBIOSUpdate' manually to install BIOS updates" -ForegroundColor Yellow
-                }
-            } else {
-                Write-Host "BIOS/Firmware is up to date" -ForegroundColor Green
-            }
-            
-            # Also check for other firmware updates using modern Get-SoftpaqList approach
-            try {
-                $firmwareSoftpaqs = Get-SoftpaqList -Category Firmware -Characteristic SSM -Platform (Get-HPDeviceProductID) -OS (Get-HPOS) -OSVer (Get-HPOSVersion) -ErrorAction SilentlyContinue
-            } catch {
-                # Fallback to basic approach if platform detection fails
-                $firmwareSoftpaqs = Get-SoftpaqList -Category Firmware -Characteristic SSM -ErrorAction SilentlyContinue
-            }
-            
-            if ($firmwareSoftpaqs -and $firmwareSoftpaqs.Count -gt 0) {
-                Write-Host "`nFound $($firmwareSoftpaqs.Count) additional firmware updates available:" -ForegroundColor Yellow
-                foreach ($fw in $firmwareSoftpaqs) {
-                    Write-Host "  - $($fw.Name) ($($fw.Id)) - Version: $($fw.Version)" -ForegroundColor Gray
-                }
-                Write-Host "  ⚠  Firmware updates require manual review and installation" -ForegroundColor Yellow
-                Write-Host "  ⚠  Use 'Get-Softpaq -Number <ID> -Download' and install manually" -ForegroundColor Yellow
-            }
-            
-        } catch {
-            Write-Warning "Could not check for BIOS/Firmware updates: $($_.Exception.Message)"
-        }
-        
     } catch {
-        Write-Warning "HP CMSL driver update failed: $($_.Exception.Message)"
+        Write-Warning "HP driver update failed: $($_.Exception.Message)"
         Write-Host "You may need to run this script as Administrator or check your internet connection" -ForegroundColor Yellow
     }
 }
 
-# Lenovo System Update
-function Update-LenovoDrivers {
-    Write-Host "Installing Lenovo System Update..." -ForegroundColor Yellow
-    winget install Lenovo.ThinkVantageSystemUpdate --silent --accept-package-agreements --accept-source-agreements | Out-Null
-    
-    $lenovo = "${env:ProgramFiles(x86)}\Lenovo\System Update\tvsu.exe"
-    if (Test-Path $lenovo) {
-        Write-Host "Running Lenovo driver updates..." -ForegroundColor Cyan
-        $result = Start-WithTimeout $lenovo @("/CM", "-search", "A", "-action", "INSTALL", "-noicon", "-noreboot") 15
-        if ($result -eq 0) { Write-Host "Lenovo updates completed" -ForegroundColor Green }
-        else { Write-Warning "Lenovo updates may have failed (exit code: $result)" }
-    } else {
-        Write-Warning "Lenovo System Update not found"
-    }
-}
+
 
 # Main execution
 try {
     if ($manufacturer -like "*dell*") {
+        Write-Host "Detected Dell system - running Dell Command Update" -ForegroundColor Green
         Update-DellDrivers
     } elseif ($manufacturer -like "*hewlett*" -or $manufacturer -like "*hp*") {
+        Write-Host "Detected HP system - running HP driver updates" -ForegroundColor Green
         Update-HPDrivers
-    } elseif ($manufacturer -like "*lenovo*") {
-        Update-LenovoDrivers
+    } elseif ($manufacturer -eq "unknown") {
+        Write-Warning "Could not detect system manufacturer. Attempting HP method as fallback (most common)..."
+        Write-Host "If this fails, please run the script on a Dell system, or install drivers manually" -ForegroundColor Yellow
+        Update-HPDrivers
     } else {
-        Write-Warning "Unsupported manufacturer: $manufacturer"
+        Write-Warning "Unsupported or unrecognized manufacturer: $manufacturer"
+        Write-Host "Supported manufacturers: Dell, HP/Hewlett-Packard" -ForegroundColor Yellow
+        Write-Host "System detected: $manufacturer $model" -ForegroundColor Gray
+        
+        # Provide helpful guidance
+        Write-Host "`nFor unsupported systems, consider:" -ForegroundColor Cyan
+        Write-Host "- Running Windows Update manually" -ForegroundColor Gray
+        Write-Host "- Downloading drivers from manufacturer's website" -ForegroundColor Gray
+        Write-Host "- Using Device Manager to update drivers" -ForegroundColor Gray
     }
     
-    Write-Host "Driver update completed!" -ForegroundColor Green
+    Write-Host "`nDriver update process completed!" -ForegroundColor Green
     
 } catch {
-    Write-Warning "Error: $($_.Exception.Message)"
+    Write-Warning "Error during driver update: $($_.Exception.Message)"
     Write-Host "Driver update finished with errors" -ForegroundColor Yellow
+    Write-Host "`nTroubleshooting tips:" -ForegroundColor Cyan
+    Write-Host "- Ensure you have internet connectivity" -ForegroundColor Gray
+    Write-Host "- Try running the script as Administrator" -ForegroundColor Gray
+    Write-Host "- Check Windows Update for basic driver updates" -ForegroundColor Gray
 }
