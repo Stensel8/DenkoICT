@@ -137,7 +137,7 @@ function Install-Nuget {
         $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
         
         if (-not $nugetProvider) {
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers
+            Install-PackageProvider -Name NuGet -MinimumVersion 3.0.0.1 -Force -Scope AllUsers
             Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] [INFO] NuGet package provider installed successfully"
         }
         else {

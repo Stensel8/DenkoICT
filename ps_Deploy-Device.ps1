@@ -23,7 +23,7 @@ Write-DeploymentLog "Script: ps_Deploy-Device.ps1" "INFO"
 
 # Run each script in separate process to isolate exit commands
 Write-DeploymentLog "Starting Winget Installation..." "INFO"
-Write-Host "[1/3] Installing Winget..." -ForegroundColor Cyan
+Write-Host "[1/4] Installing Winget..." -ForegroundColor Cyan
 try {
     $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Winget.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
     if ($process.ExitCode -eq 0) {
@@ -35,8 +35,21 @@ try {
     Write-DeploymentLog "Winget installation error: $($_.Exception.Message)" "ERROR"
 }
 
+Write-DeploymentLog "Starting Drivers Installation..." "INFO"
+Write-Host "[2/4] Installing Drivers..." -ForegroundColor Cyan
+try {
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallDrivers.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-DeploymentLog "Drivers installation completed successfully" "INFO"
+    } else {
+        Write-DeploymentLog "Drivers installation failed with exit code: $($process.ExitCode)" "ERROR"
+    }
+} catch {
+    Write-DeploymentLog "Drivers installation error: $($_.Exception.Message)" "ERROR"
+}
+
 Write-DeploymentLog "Starting Applications Installation..." "INFO"
-Write-Host "[2/3] Installing Applications..." -ForegroundColor Cyan
+Write-Host "[3/4] Installing Applications..." -ForegroundColor Cyan
 try {
     $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallApplications.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
     if ($process.ExitCode -eq 0) {
@@ -48,17 +61,17 @@ try {
     Write-DeploymentLog "Applications installation error: $($_.Exception.Message)" "ERROR"
 }
 
-Write-DeploymentLog "Starting Drivers Installation..." "INFO"
-Write-Host "[3/3] Installing Drivers..." -ForegroundColor Cyan
+Write-DeploymentLog "Starting Personalization Setup..." "INFO"
+Write-Host "[4/4] Setting Personalization..." -ForegroundColor Cyan
 try {
-    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallDrivers.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Set-Personalization.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
     if ($process.ExitCode -eq 0) {
-        Write-DeploymentLog "Drivers installation completed successfully" "INFO"
+        Write-DeploymentLog "Personalization setup completed successfully" "INFO"
     } else {
-        Write-DeploymentLog "Drivers installation failed with exit code: $($process.ExitCode)" "ERROR"
+        Write-DeploymentLog "Personalization setup failed with exit code: $($process.ExitCode)" "ERROR"
     }
 } catch {
-    Write-DeploymentLog "Drivers installation error: $($_.Exception.Message)" "ERROR"
+    Write-DeploymentLog "Personalization setup error: $($_.Exception.Message)" "ERROR"
 }
 
 Write-DeploymentLog "=== Denko ICT Device Deployment Completed ===" "INFO"
