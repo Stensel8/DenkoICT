@@ -90,7 +90,7 @@ function Remove-AppxByPattern {
                 Log "Successfully removed package: $packageName"
                 $Succeeded.Add("Removed: $packageName") | Out-Null
             } catch {
-                Log "Failed to remove package $($packageName): $($_.Exception.Message)"
+                Log "Failed to remove package $packageName: $($_.Exception.Message)"
                 $Failed.Add("Failed to remove: $packageName") | Out-Null
             }
         }
