@@ -2,10 +2,6 @@ param(
     [switch]$WhatIf    # Set -WhatIf when testing to avoid destructive changes
 )
 
-param(
-    [switch]$WhatIf    # Set -WhatIf when testing to avoid destructive changes
-)
-
 # List of unwanted apps to remove. Wildcards (*) are supported.
 $AppsToRemove = @(
     # Communication and Social

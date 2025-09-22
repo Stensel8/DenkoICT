@@ -38,7 +38,7 @@ try {
 Write-DeploymentLog "Starting Drivers Installation..." "INFO"
 Write-Host "[2/4] Installing Drivers..." -ForegroundColor Cyan
 try {
-    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallDrivers.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Drivers.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
     if ($process.ExitCode -eq 0) {
         Write-DeploymentLog "Drivers installation completed successfully" "INFO"
     } else {
@@ -51,7 +51,7 @@ try {
 Write-DeploymentLog "Starting Applications Installation..." "INFO"
 Write-Host "[3/4] Installing Applications..." -ForegroundColor Cyan
 try {
-    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_InstallApplications.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
+    $process = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Applications.ps1' | iex`"" -Wait -WindowStyle Hidden -PassThru
     if ($process.ExitCode -eq 0) {
         Write-DeploymentLog "Applications installation completed successfully" "INFO"
     } else {

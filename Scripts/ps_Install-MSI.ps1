@@ -1,7 +1,4 @@
 ﻿
-
-
-
 #===========================================================================Get-MSIProps==========================================================================================
 # Revision: 2.0.0
 # Author: Sten Tijhuis (Stensel8)
@@ -187,19 +184,20 @@ $Result = (start-process msiexec.exe -ArgumentList $msiargs -wait -PassThru)
 
 $Exit = $MSIExecExitCodes | where-object ErrorCode -eq $Result.ExitCode
 
-Write-Output "The exit code was $($Exit.ErrorCode). The statuse was $($Exit.ErrorName). The description was $($exit.errordesc)."
+Write-Output "The exit code was $($Exit.ErrorCode). The status was $($Exit.ErrorName). The description was $($Exit.ErrorDesc)."
 
 If($($Exit.ErrorCode) -eq 0 -or $($Exit.ErrorCode) -eq 1707){
 $global:status = "Success"
 $global:ExitCode = "0"
 }
-
-If($($Exit.ErrorCode) -eq 3010 -or $($Exit.ErrorCode) -eq 1641){
+ElseIf($($Exit.ErrorCode) -eq 3010 -or $($Exit.ErrorCode) -eq 1641){
 $global:status = "Reboot"
 $global:ExitCode = "3010"
 }
+Else{
 $global:status = "Error"
 $global:ExitCode = "9999"
+}
 }
 
 
