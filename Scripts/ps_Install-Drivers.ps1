@@ -1,30 +1,15 @@
 <#
 .SYNOPSIS
-    Install vendor driver update tools and run updates
+    Install vendor driver update tools and run updates for Dell and HP systems.
 .DESCRIPTION
     Detects system manufacturer and runs appropriate driver update tool:
     - Dell: Dell Command Update
-    - HP: HP Client Management Script Library (HP CMSL) - supports all HP models including ProBook, EliteBook, and ZBook
-    - Lenovo: Lenovo System Update
-    
-    The HP implementation now includes (Updated for HPCMSL 1.8.x+):
-    - Modern HPCMSL installation with proper scoping and version management
-    - Platform-specific driver detection using Get-HPDeviceProductID and Get-HPOS
-    - Enhanced Get-Softpaq cmdlet usage with integrity verification
-    - Improved BIOS update detection using Get-HPBIOSUpdates -Check
-    - Proper use of Get-Softpaq cmdlet for downloading drivers with modern parameters
-    - Silent installation with multiple exit code handling
-    - Retry mechanisms with exponential backoff
-    - Progress tracking and detailed logging
-    - BIOS/Firmware update detection (reports only, manual installation required)
-    - Enhanced error handling and troubleshooting information
+    - HP: HP Client Management Script Library (HP CMSL) - supports all enterprise HP models including ProBook, EliteBook, and ZBook
     
 .NOTES
     - HP CMSL requires PowerShell to be run as Administrator for module installation and driver updates
-    - Updated to use HPCMSL 1.8.x+ with modern cmdlets and improved error handling
     - Platform-specific detection ensures only compatible drivers are downloaded and installed
     - Firmware/BIOS updates are detected but not automatically installed for safety reasons
-    - The script uses modern HP CMSL cmdlets: Get-Softpaq, Get-SoftpaqList, Get-HPBIOSUpdates, Get-HPDeviceProductID
     - Supports various installation exit codes (0, 1641, 3010) for successful installations
     - Uses CurrentUser scope for module installation to avoid permission issues
 .EXAMPLE
