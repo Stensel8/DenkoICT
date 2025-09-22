@@ -155,16 +155,20 @@ function Update-DellDrivers {
             Write-Host "Scanning for Dell updates..." -ForegroundColor Gray
             $scanResult = Start-WithTimeout $dcu @("/scan", "-silent") 5
             
-            # Then apply updates
-            Write-Host "Applying Dell updates..." -ForegroundColor Gray
-            $result = Start-WithTimeout $dcu @("/applyUpdates", "-reboot=disable", "-silent") 15
-            
-            switch ($result) {
-                0 { Write-Host "`nDell updates completed successfully" -ForegroundColor Green }
-                1 { Write-Host "`nDell updates completed - reboot recommended" -ForegroundColor Yellow }
-                500 { Write-Host "`nDell system is up to date - no updates available" -ForegroundColor Green }
-                -1 { Write-Warning "`nDell update process timed out" }
-                default { Write-Warning "`nDell updates may have failed (exit code: $result)" }
+            if ($scanResult -eq 0) {
+                # Then apply updates
+                Write-Host "Applying Dell updates..." -ForegroundColor Gray
+                $result = Start-WithTimeout $dcu @("/applyUpdates", "-reboot=disable", "-silent") 15
+                
+                switch ($result) {
+                    0 { Write-Host "`nDell updates completed successfully" -ForegroundColor Green }
+                    1 { Write-Host "`nDell updates completed - reboot recommended" -ForegroundColor Yellow }
+                    500 { Write-Host "`nDell system is up to date - no updates available" -ForegroundColor Green }
+                    -1 { Write-Warning "`nDell update process timed out" }
+                    default { Write-Warning "`nDell updates may have failed (exit code: $result)" }
+                }
+            } else {
+                Write-Warning "Dell update scan failed (exit code: $scanResult). Skipping update application."
             }
         } else {
             Write-Warning "Dell Command Update not found at any expected path"
