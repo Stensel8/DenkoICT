@@ -126,6 +126,11 @@ function Update-DellDrivers {
     try {
         if ($wingetAvailable) {
             $wingetResult = winget install Dell.CommandUpdate --silent --accept-package-agreements --accept-source-agreements
+            $wingetExitCode = $LASTEXITCODE
+            if ($wingetExitCode -ne 0 -and $wingetExitCode -ne 1641 -and $wingetExitCode -ne 3010) {
+                Write-Warning "Dell Command Update installation failed with exit code $wingetExitCode. Output:`n$wingetResult"
+                return
+            }
         } else {
             Write-Warning "WinGet not available - Dell Command Update installation skipped"
             Write-Host "Please install Dell Command Update manually from Dell's website" -ForegroundColor Yellow
