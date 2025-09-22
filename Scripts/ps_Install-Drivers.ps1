@@ -55,40 +55,42 @@ function Update-HPDrivers {
     Write-Host "Installing HP Client Management Script Library (HP CMSL)..." -ForegroundColor Yellow
     
     try {
-        # Check if HPCMSL module is installed
+        # Check if HPCMSL module is available and working
         if (-not (Get-Module -ListAvailable -Name HPCMSL)) {
-            Write-Host "Installing HPCMSL PowerShell module..." -ForegroundColor Cyan
+            Write-Host "HPCMSL not found. Installing prerequisites and HPCMSL..." -ForegroundColor Cyan
             
-            # Ensure TLS 1.2 is available for secure downloads
+            # Set TLS 1.2 for secure downloads
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             
-            # Update PowerShellGet and PackageManagement to support newer module formats
-            Write-Host "Updating PowerShellGet and PackageManagement..." -ForegroundColor Cyan
-            try {
-                Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction Stop | Out-Null
-                Install-Module -Name PowerShellGet -Force -Scope AllUsers -AllowClobber -ErrorAction Stop | Out-Null
-                Install-Module -Name PackageManagement -Force -Scope AllUsers -AllowClobber -ErrorAction Stop | Out-Null
-                
-                # Import the updated modules
-                Import-Module PowerShellGet -Force -ErrorAction Stop
-                Import-Module PackageManagement -Force -ErrorAction Stop
-                
-                # Now install HPCMSL
-                Write-Host "Installing HPCMSL module..." -ForegroundColor Cyan
-                Install-Module -Name HPCMSL -Force -Scope AllUsers -AllowClobber -ErrorAction Stop | Out-Null
-                
-            } catch {
-                Write-Warning "Failed to update PowerShell modules: $($_.Exception.Message)"
-                Write-Host "Attempting alternative HPCMSL installation method..." -ForegroundColor Yellow
-                
-                # Alternative: Try installing from PSGallery with specific repository
-                Register-PSRepository -Name PSGallery -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted -ErrorAction SilentlyContinue
-                Install-Module -Name HPCMSL -Repository PSGallery -Force -Scope AllUsers -AllowClobber -SkipPublisherCheck | Out-Null
+            # Create a script to run in a new PowerShell session
+            $installScript = @"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers
+Install-Module -Name PowerShellGet -Force -Scope AllUsers -AllowClobber
+Install-Module -Name HPCMSL -Force -Scope AllUsers -AllowClobber -SkipPublisherCheck
+"@
+            
+            $scriptPath = "$env:TEMP\Install-HPCMSL.ps1"
+            $installScript | Out-File -FilePath $scriptPath -Encoding UTF8
+            
+            Write-Host "Running HPCMSL installation in new PowerShell session..." -ForegroundColor Cyan
+            $process = Start-Process -FilePath "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`"" -Wait -PassThru -WindowStyle Hidden
+            
+            Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+            
+            if ($process.ExitCode -ne 0) {
+                Write-Warning "HPCMSL installation may have failed. Attempting fallback..."
+                return
             }
         }
         
-        # Import the module
-        Import-Module HPCMSL -Force
+        # Import HPCMSL module
+        try {
+            Import-Module HPCMSL -Force -ErrorAction Stop
+        } catch {
+            Write-Warning "Could not import HPCMSL module: $($_.Exception.Message)"
+            return
+        }
         
         Write-Host "Detecting available HP driver updates..." -ForegroundColor Cyan
         
