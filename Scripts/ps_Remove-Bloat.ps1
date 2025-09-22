@@ -71,14 +71,14 @@ function Remove-AppxByPattern {
     )
 
     Log "Searching installed packages matching: $Pattern"
-    $matches = Get-AppxPackage -AllUsers -Name $Pattern
+    $matchedPackages = Get-AppxPackage -AllUsers -Name $Pattern
 
-    if (-not $matches) {
+    if (-not $matchedPackages) {
         Log "No installed packages found for pattern: $Pattern"
         return
     }
 
-    foreach ($pkg in $matches) {
+    foreach ($pkg in $matchedPackages) {
         $packageName = $pkg.PackageFullName
         Log "Found installed package: $($pkg.Name) | $packageName"
         if ($WhatIf) {
@@ -144,6 +144,35 @@ foreach ($appName in $AppsToRemove) {
     
     Remove-AppxByPattern -Pattern $pattern -WhatIf:$WhatIf -Succeeded $succeededRemovals -Failed $failedRemovals
     Remove-ProvisionedByPattern -Pattern $pattern -WhatIf:$WhatIf -Succeeded $succeededRemovals -Failed $failedRemovals
+}
+
+# --- Disable Consumer Features ---
+Log "Disabling Windows Consumer Features to prevent automatic installation of bloatware apps..."
+
+$registryPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
+$registryName = "DisableWindowsConsumerFeatures"
+$registryValue = 1
+
+try {
+    # Create the registry path if it doesn't exist
+    if (-not (Test-Path $registryPath)) {
+        if ($WhatIf) {
+            Log "WhatIf: Would create registry path: $registryPath"
+        } else {
+            New-Item -Path $registryPath -Force | Out-Null
+            Log "Created registry path: $registryPath"
+        }
+    }
+    
+    # Set the registry value
+    if ($WhatIf) {
+        Log "WhatIf: Would set registry value $registryName to $registryValue at $registryPath"
+    } else {
+        Set-ItemProperty -Path $registryPath -Name $registryName -Value $registryValue -Type DWord
+        Log "Successfully disabled Windows Consumer Features - bloatware apps like TikTok and WhatsApp will not be automatically installed"
+    }
+} catch {
+    Log "Failed to disable Windows Consumer Features: $($_.Exception.Message)"
 }
 
 # --- Summary ---
