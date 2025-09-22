@@ -43,6 +43,8 @@ Other sources which were used to create this repository.
 * https://api.github.com/repos/microsoft/winget-cli/releases/latest
 * https://github.com/KelvinTegelaar/RunAsUser
 * https://github.com/asheroto/winget-install
+* https://www.powershellgallery.com/packages/winget-install/
+* https://www.powershellgallery.com/packages/HPCMSL/
 * https://github.com/omaha-consulting/winstall
 * https://github.com/omaha-consulting/winget.pro
 * https://github.com/REALSDEALS/pcHealth

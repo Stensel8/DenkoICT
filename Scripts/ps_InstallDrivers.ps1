@@ -57,7 +57,7 @@ function Install-And-RunHP {
     try {
         # Ensure NuGet provider is installed
         Write-Host "Installing NuGet package provider..."
-        Install-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201 -Force -ErrorAction Stop
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction Stop
         
         # Install HPDrivers module from PowerShell Gallery
         Write-Host "Installing HPDrivers module from PowerShell Gallery..."
