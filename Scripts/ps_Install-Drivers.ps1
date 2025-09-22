@@ -4,8 +4,10 @@
 .DESCRIPTION
     Detects system manufacturer and runs appropriate driver update tool:
     - Dell: Dell Command Update
-    - HP: HP Image Assistant (Enterprise models only)
+    - HP: HP Client Management Script Library (HP CMSL) - supports all HP models including ProBook, EliteBook, and ZBook
     - Lenovo: Lenovo System Update
+.NOTES
+    HP CMSL requires PowerShell to be run as Administrator for module installation and driver updates.
 #>
 
 Write-Host "Starting Driver Update..." -ForegroundColor Cyan
@@ -48,25 +50,68 @@ function Update-DellDrivers {
     }
 }
 
-# HP Image Assistant (Enterprise models only)
+# HP CMSL (Client Management Script Library)
 function Update-HPDrivers {
-    # Simple check for enterprise models
-    if ($model -match "pavilion|envy|omen|spectre|stream") {
-        Write-Host "HP Consumer model detected - please use HP Support Assistant manually" -ForegroundColor Yellow
-        return
-    }
+    Write-Host "Installing HP Client Management Script Library (HP CMSL)..." -ForegroundColor Yellow
     
-    Write-Host "Installing HP Image Assistant..." -ForegroundColor Yellow
-    winget install HP.ImageAssistant --silent --accept-package-agreements --accept-source-agreements | Out-Null
-    
-    $hpia = "C:\Program Files\HP\HPIA\HPImageAssistant.exe"
-    if (Test-Path $hpia) {
-        Write-Host "Running HP driver updates..." -ForegroundColor Cyan
-        $result = Start-WithTimeout $hpia @("/Operation:Analyze", "/Category:Driver", "/Action:Install", "/Silent") 15
-        if ($result -eq 0) { Write-Host "HP updates completed" -ForegroundColor Green }
-        else { Write-Warning "HP updates may have failed (exit code: $result)" }
-    } else {
-        Write-Warning "HP Image Assistant not found"
+    try {
+        # Check if HPCMSL module is installed
+        if (-not (Get-Module -ListAvailable -Name HPCMSL)) {
+            Write-Host "Installing HPCMSL PowerShell module..." -ForegroundColor Cyan
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers | Out-Null
+            Install-Module -Name HPCMSL -Force -Scope AllUsers -AllowClobber | Out-Null
+        }
+        
+        # Import the module
+        Import-Module HPCMSL -Force
+        
+        Write-Host "Detecting available HP driver updates..." -ForegroundColor Cyan
+        
+        # Get available softpaqs (drivers) for this system
+        $softpaqs = Get-SoftpaqList -Category Driver -Characteristic SSM
+        
+        if ($softpaqs -and $softpaqs.Count -gt 0) {
+            Write-Host "Found $($softpaqs.Count) driver updates available" -ForegroundColor Green
+            
+            # Create temp directory for downloads
+            $tempPath = "$env:TEMP\HPDrivers"
+            if (-not (Test-Path $tempPath)) {
+                New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
+            }
+            
+            $successCount = 0
+            $failCount = 0
+            
+            foreach ($softpaq in $softpaqs) {
+                try {
+                    Write-Host "Installing driver: $($softpaq.Name) ($($softpaq.Id))" -ForegroundColor Yellow
+                    
+                    # Download and install the softpaq
+                    Install-SoftPaq -Number $softpaq.Id -DestinationPath $tempPath -Quiet
+                    $successCount++
+                    
+                } catch {
+                    Write-Warning "Failed to install $($softpaq.Name): $($_.Exception.Message)"
+                    $failCount++
+                }
+            }
+            
+            # Cleanup temp directory
+            Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
+            
+            Write-Host "`nHP driver update summary:" -ForegroundColor Cyan
+            Write-Host "  Successfully installed: $successCount drivers" -ForegroundColor Green
+            if ($failCount -gt 0) {
+                Write-Host "  Failed installations: $failCount drivers" -ForegroundColor Red
+            }
+            
+        } else {
+            Write-Host "No HP driver updates available for this system" -ForegroundColor Green
+        }
+        
+    } catch {
+        Write-Warning "HP CMSL driver update failed: $($_.Exception.Message)"
+        Write-Host "You may need to run this script as Administrator or check your internet connection" -ForegroundColor Yellow
     }
 }
 
