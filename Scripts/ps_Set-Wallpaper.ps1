@@ -75,12 +75,63 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'DenkoICT.Common.ps1'
-if (-not (Test-Path -Path $commonModule)) {
-    throw "Unable to locate shared helper module at $commonModule"
+$toolkitPath = Join-Path -Path $PSScriptRoot -ChildPath 'ps_Invoke-AdminToolkit.ps1'
+$script:ToolkitLoaded = $false
+
+if (Test-Path -Path $toolkitPath) {
+    try {
+        . $toolkitPath
+        $script:ToolkitLoaded = $true
+        Write-Verbose "Imported shared helper functions from $toolkitPath."
+    } catch {
+        Write-Verbose "Failed to import helper toolkit from ${toolkitPath}: $_"
+    }
+} else {
+    Write-Verbose "Helper toolkit not found at $toolkitPath. Falling back to local helper implementations."
 }
 
-. $commonModule
+if (-not (Get-Command -Name Write-Log -ErrorAction SilentlyContinue)) {
+    function Write-Log {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Message,
+
+            [Parameter()]
+            [ValidateSet('Info','Success','Warning','Error','Verbose')]
+            [string]$Level = 'Info'
+        )
+
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $formatted = "[$timestamp] [$Level] $Message"
+
+        $color = switch ($Level) {
+            'Success' { 'Green' }
+            'Warning' { 'Yellow' }
+            'Error'   { 'Red' }
+            'Verbose' { 'Cyan' }
+            default   { 'White' }
+        }
+
+        Write-Host $formatted -ForegroundColor $color
+    }
+}
+
+if (-not (Get-Command -Name Assert-AdminRights -ErrorAction SilentlyContinue)) {
+    function Assert-AdminRights {
+        [CmdletBinding()]
+        param()
+
+        $identity  = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+
+        if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            $message = 'This script requires administrative privileges. Please run in an elevated PowerShell session.'
+            Write-Log -Message $message -Level 'Error'
+            throw $message
+        }
+    }
+}
 
 Assert-AdminRights
 
