@@ -88,14 +88,14 @@ public class Wallpaper {
 try {
     Write-Verbose "Setting wallpaper to: $WallpaperPath"
     
-    # Add the type if it doesn't exist
-    if (-not ([System.Management.Automation.PSTypeName]'Wallpaper').Type) {
-        Add-Type $wallpaperCode -ErrorAction Stop
-    }
+    # Add the type and cache the result
+    $WallpaperType = Add-Type -TypeDefinition $wallpaperCode -PassThru -ErrorAction Stop
+    
+    
     
     # Set the wallpaper
     # Parameters: SPI_SETDESKWALLPAPER (20), 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE (3)
-    $result = [Wallpaper]::SystemParametersInfo(20, 0, $WallpaperPath, 3)
+    $result = $WallpaperType::SystemParametersInfo(20, 0, $WallpaperPath, 3)
     
     if ($result) {
         Write-Host "Wallpaper successfully set to: $WallpaperPath" -ForegroundColor Green
