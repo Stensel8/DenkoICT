@@ -1,5 +1,80 @@
+<#PSScriptInfo
+
+.VERSION 1.1.1
+
+.AUTHOR Sten Tijhuis
+
+.COMPANYNAME Denko ICT
+
+.TAGS PowerShell Windows Bloatware Debloat AppxPackage Cleanup Deployment
+
+.PROJECTURI https://github.com/Stensel8/DenkoICT
+
+.RELEASENOTES
+[Version 1.0.0] - Initial Release. Removes bloatware apps from Windows.
+[Version 1.1.0] - Added registry modifications to prevent reinstallation of bloatware.
+[Version 1.1.1] - Added more known bloatware apps to the removal list.
+#>
+
+<#
+.SYNOPSIS
+    Removes bloatware applications and prevents their automatic reinstallation.
+
+.DESCRIPTION
+    This script removes unwanted Windows applications (bloatware) from the system.
+    It removes both installed packages (for current users) and provisioned packages 
+    (preventing installation for new users). Additionally, it configures registry
+    settings to prevent Windows from automatically reinstalling bloatware.
+
+    The script targets:
+    - Communication apps (Skype, Teams personal, Your Phone)
+    - Games and entertainment (Xbox apps, Candy Crush, Solitaire)
+    - Productivity apps (Sticky Notes, Maps, To-Do)
+    - News and weather apps
+    - Other unnecessary pre-installed apps
+
+.PARAMETER WhatIf
+    Performs a dry run, showing what would be removed without making changes.
+
+.PARAMETER LogPath
+    Path for the detailed log file. Default creates log in temp directory.
+
+.EXAMPLE
+    .\ps_Remove-Bloat.ps1
+    
+    Removes all bloatware applications and configures prevention settings.
+
+.EXAMPLE
+    .\ps_Remove-Bloat.ps1 -WhatIf
+    
+    Shows what would be removed without making any changes.
+
+.OUTPUTS
+    Console output with removal summary and detailed log file.
+
+.NOTES
+    Version      : 1.1.1
+    Created by   : Sten Tijhuis
+    Company      : Denko ICT
+    
+    Requires administrative privileges for full effectiveness.
+    Registry changes prevent automatic reinstallation of bloatware.
+    
+    Registry modifications:
+    - DisableWindowsConsumerFeatures: Prevents bloatware auto-installation
+    - Start_IrisRecommendations: Disables Start Menu suggestions
+
+.LINK
+    Project Site: https://github.com/Stensel8/DenkoICT
+#>
+
+[CmdletBinding(SupportsShouldProcess)]
 param(
-    [switch]$WhatIf    # Set -WhatIf when testing to avoid destructive changes
+    [Parameter(Mandatory = $false)]
+    [switch]$WhatIf,
+    
+    [Parameter(Mandatory = $false)]
+    [string]$LogPath = "$env:TEMP\DenkoICT-Debloat-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 )
 
 # List of unwanted apps to remove. Wildcards (*) are supported.
@@ -46,9 +121,9 @@ $AppsToRemove = @(
     # News and Weather
     "Microsoft.BingNews",
     "Microsoft.BingWeather",
-    "Microsoft.Start", # Successor to BingNews
+    "Microsoft.Start",                      # Successor to BingNews
     "Microsoft.BingSearch",
-    "Microsoft.WebExperiencePack", # Widgets and other web content
+    "Microsoft.WebExperiencePack",          # Widgets and other web content
 
     # System & Utility (use with caution)
     "Microsoft.PowerAutomateDesktop"
@@ -56,10 +131,21 @@ $AppsToRemove = @(
 
 # --- Functions ---
 
-function Log {
-    param($Message)
-    $time = Get-Date -Format 's'
-    Write-Output "[$time] $Message"
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('Info', 'Success', 'Warning', 'Error')]
+        [string]$Level = 'Info'
+    )
+    
+    $time = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $logMessage = "[$time] [$Level] $Message"
+    
+    # Write to file
+    Add-Content -Path $LogPath -Value $logMessage -Force
+    
+    # Write to console
+    Write-Output $logMessage
 }
 
 function Remove-AppxByPattern {
@@ -70,27 +156,30 @@ function Remove-AppxByPattern {
         [System.Collections.ArrayList]$Failed
     )
 
-    Log "Searching installed packages matching: $Pattern"
-    $matchedPackages = Get-AppxPackage -AllUsers | Where-Object { $_.Name -like $Pattern -or $_.PackageFullName -like $Pattern }
+    Write-Log "Searching installed packages matching: $Pattern"
+    $matchedPackages = Get-AppxPackage -AllUsers | Where-Object { 
+        $_.Name -like $Pattern -or $_.PackageFullName -like $Pattern 
+    }
 
     if (-not $matchedPackages) {
-        Log "No installed packages found for pattern: $Pattern"
+        Write-Log "No installed packages found for pattern: $Pattern"
         return
     }
 
     foreach ($pkg in $matchedPackages) {
         $packageName = $pkg.PackageFullName
-        Log "Found installed package: $($pkg.Name) | $packageName"
+        Write-Log "Found installed package: $($pkg.Name) | $packageName"
+        
         if ($WhatIf) {
-            Log "WhatIf: Would remove package $packageName for all users"
+            Write-Log "WhatIf: Would remove package $packageName for all users" -Level 'Warning'
             $Succeeded.Add("Would remove: $packageName") | Out-Null
         } else {
             try {
                 Remove-AppxPackage -Package $packageName -AllUsers -ErrorAction Stop
-                Log "Successfully removed package: $packageName"
+                Write-Log "Successfully removed package: $packageName" -Level 'Success'
                 $Succeeded.Add("Removed: $packageName") | Out-Null
             } catch {
-                Log "Failed to remove package $($packageName): $($_.Exception.Message)"
+                Write-Log "Failed to remove package $($packageName): $($_.Exception.Message)" -Level 'Error'
                 $Failed.Add("Failed to remove: $packageName") | Out-Null
             }
         }
@@ -105,27 +194,30 @@ function Remove-ProvisionedByPattern {
         [System.Collections.ArrayList]$Failed
     )
 
-    Log "Searching provisioned packages matching: $Pattern"
-    $provPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -like $Pattern }
+    Write-Log "Searching provisioned packages matching: $Pattern"
+    $provPackages = Get-AppxProvisionedPackage -Online | Where-Object { 
+        $_.PackageName -like $Pattern 
+    }
 
     if (-not $provPackages) {
-        Log "No provisioned packages found for pattern: $Pattern"
+        Write-Log "No provisioned packages found for pattern: $Pattern"
         return
     }
 
     foreach ($p in $provPackages) {
         $packageName = $p.PackageName
-        Log "Found provisioned package: $($p.DisplayName) | $packageName"
+        Write-Log "Found provisioned package: $($p.DisplayName) | $packageName"
+        
         if ($WhatIf) {
-            Log "WhatIf: Would remove provisioned package $packageName"
+            Write-Log "WhatIf: Would remove provisioned package $packageName" -Level 'Warning'
             $Succeeded.Add("Would remove provisioned: $packageName") | Out-Null
         } else {
             try {
                 Remove-AppxProvisionedPackage -Online -PackageName $packageName -ErrorAction Stop
-                Log "Successfully removed provisioned package: $packageName"
+                Write-Log "Successfully removed provisioned package: $packageName" -Level 'Success'
                 $Succeeded.Add("Removed provisioned: $packageName") | Out-Null
             } catch {
-                Log "Failed to remove provisioned package $($packageName): $($_.Exception.Message)"
+                Write-Log "Failed to remove provisioned package $($packageName): $($_.Exception.Message)" -Level 'Error'
                 $Failed.Add("Failed to remove provisioned: $packageName") | Out-Null
             }
         }
@@ -133,6 +225,10 @@ function Remove-ProvisionedByPattern {
 }
 
 # --- Main Execution ---
+
+Write-Log "=== Bloatware Removal Started ===" -Level 'Info'
+Write-Log "User: $env:USERNAME" -Level 'Info'
+Write-Log "Computer: $env:COMPUTERNAME" -Level 'Info'
 
 # Arrays to hold the results
 $succeededRemovals = [System.Collections.ArrayList]::new()
@@ -147,61 +243,43 @@ foreach ($appName in $AppsToRemove) {
 }
 
 # --- Disable Consumer Features ---
-Log "Disabling Windows Consumer Features to prevent automatic installation of bloatware apps..."
+Write-Log "Configuring registry to prevent bloatware reinstallation..." -Level 'Info'
 
-$registryPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
-$registryName = "DisableWindowsConsumerFeatures"
-$registryValue = 1
+$registryConfigs = @(
+    @{
+        Path = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
+        Name = "DisableWindowsConsumerFeatures"
+        Value = 1
+        Description = "Prevents automatic installation of consumer apps"
+    },
+    @{
+        Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+        Name = "Start_IrisRecommendations"
+        Value = 0
+        Description = "Disables Start Menu suggestions"
+    }
+)
 
-try {
-    # Create the registry path if it doesn't exist
-    if (-not (Test-Path $registryPath)) {
-        if ($WhatIf) {
-            Log "WhatIf: Would create registry path: $registryPath"
-        } else {
-            New-Item -Path $registryPath -Force | Out-Null
-            Log "Created registry path: $registryPath"
+foreach ($config in $registryConfigs) {
+    try {
+        if (-not (Test-Path $config.Path)) {
+            if ($WhatIf) {
+                Write-Log "WhatIf: Would create registry path: $($config.Path)" -Level 'Warning'
+            } else {
+                New-Item -Path $config.Path -Force | Out-Null
+                Write-Log "Created registry path: $($config.Path)" -Level 'Success'
+            }
         }
-    }
-    
-    # Set the registry value
-    if ($WhatIf) {
-        Log "WhatIf: Would set registry value $registryName to $registryValue at $registryPath"
-    } else {
-        New-ItemProperty -Path $registryPath -Name $registryName -Value $registryValue -PropertyType DWord -Force | Out-Null
-        Log "Successfully disabled Windows Consumer Features - bloatware apps like TikTok and WhatsApp will not be automatically installed"
-    }
-} catch {
-    Log "Failed to disable Windows Consumer Features: $($_.Exception.Message)"
-}
-
-# --- Disable Start Menu Suggestions ---
-Log "Disabling Start Menu suggestions (tips, shortcuts, new apps, and more)..."
-
-$startMenuRegistryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
-$startMenuRegistryName = "Start_IrisRecommendations"
-$startMenuRegistryValue = 0
-
-try {
-    # Create the registry path if it doesn't exist
-    if (-not (Test-Path $startMenuRegistryPath)) {
+        
         if ($WhatIf) {
-            Log "WhatIf: Would create registry path: $startMenuRegistryPath"
+            Write-Log "WhatIf: Would set $($config.Name) to $($config.Value) at $($config.Path)" -Level 'Warning'
         } else {
-            New-Item -Path $startMenuRegistryPath -Force | Out-Null
-            Log "Created registry path: $startMenuRegistryPath"
+            New-ItemProperty -Path $config.Path -Name $config.Name -Value $config.Value -PropertyType DWord -Force | Out-Null
+            Write-Log "Configured: $($config.Description)" -Level 'Success'
         }
+    } catch {
+        Write-Log "Failed to configure $($config.Name): $($_.Exception.Message)" -Level 'Error'
     }
-    
-    # Set the registry value
-    if ($WhatIf) {
-        Log "WhatIf: Would set registry value $startMenuRegistryName to $startMenuRegistryValue at $startMenuRegistryPath"
-    } else {
-        New-ItemProperty -Path $startMenuRegistryPath -Name $startMenuRegistryName -Value $startMenuRegistryValue -PropertyType DWord -Force | Out-Null
-        Log "Successfully disabled Start Menu suggestions - recommended tips, shortcuts, and new apps will no longer appear"
-    }
-} catch {
-    Log "Failed to disable Start Menu suggestions: $($_.Exception.Message)"
 }
 
 # --- Summary ---
@@ -219,5 +297,6 @@ if ($failedRemovals.Count -gt 0) {
     $failedRemovals | ForEach-Object { Write-Host "- $_" -ForegroundColor Red }
 }
 
+Write-Log "=== Bloatware removal completed ===" -Level 'Info'
+Write-Log "Log file saved to: $LogPath" -Level 'Info'
 Write-Host "`nBloatware removal script finished." -ForegroundColor Green
-

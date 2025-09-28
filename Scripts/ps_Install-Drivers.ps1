@@ -1,23 +1,96 @@
+<#PSScriptInfo
+
+.VERSION 1.0.3
+
+.AUTHOR Sten Tijhuis
+
+.COMPANYNAME Denko ICT
+
+.TAGS PowerShell Windows Drivers Dell HP HPIA CMSL DCU Deployment
+
+.PROJECTURI https://github.com/Stensel8/DenkoICT
+
+.RELEASENOTES
+[Version 1.0.0] - Initial Release. Automated driver updates for Dell and HP systems.
+[Version 1.0.1] - Improved error handling and logging.
+[Version 1.0.2] - Removed Lenovo and Asus support due to lack of reliable tools.
+[Version 1.0.3] - Fixed a bug regarding HP CMSL installation.
+#>
+
 <#
 .SYNOPSIS
     Install vendor driver update tools and run updates for Dell and HP systems.
+
 .DESCRIPTION
     Detects system manufacturer and runs appropriate driver update tool:
-    - Dell: Dell Command Update
-    - HP: HP Image Assistant (primary) or HP CMSL (fallback) - supports all enterprise HP models
+    - Dell: Dell Command Update (DCU)
+    - HP: HP Image Assistant (primary) or HP CMSL (fallback)
     
-    This script is designed for use after OOBE (Out-of-Box Experience).
+    This script is designed for use after OOBE (Out-of-Box Experience) and handles
+    multiple fallback methods for system detection and driver installation.
     
-.NOTES
-    - HP driver updates use HP Image Assistant as primary method with HP CMSL as fallback
-    - Platform-specific detection ensures only compatible drivers are downloaded and installed
-    - Firmware/BIOS updates are detected but not automatically installed for safety reasons
-    - Supports various installation exit codes (0, 1641, 3010) for successful installations
-    - Includes fallbacks for system detection in restricted environments
+    Features:
+    - Automatic manufacturer detection with multiple fallback methods
+    - HP Image Assistant as primary method for HP systems
+    - HP CMSL as fallback when HPIA is unavailable
+    - Dell Command Update for Dell systems
+    - Comprehensive logging to %ProgramData%\DenkoICT\Logs
+    - WinGet integration for tool installation
+
+.PARAMETER SkipDell
+    Skip Dell driver updates even if Dell system is detected.
+
+.PARAMETER SkipHP
+    Skip HP driver updates even if HP system is detected.
+
+.PARAMETER MaxDrivers
+    Maximum number of HP drivers to install (default: 10) to prevent timeouts.
+
 .EXAMPLE
     .\ps_Install-Drivers.ps1
-    Runs the appropriate driver update tool based on detected system manufacturer
+    
+    Runs the appropriate driver update tool based on detected system manufacturer.
+
+.EXAMPLE
+    .\ps_Install-Drivers.ps1 -MaxDrivers 20
+    
+    Installs up to 20 HP drivers if HP system is detected.
+
+.OUTPUTS
+    Log files in %ProgramData%\DenkoICT\Logs\Drivers\
+
+.NOTES
+    Version      : 1.0.3
+    Created by   : Sten Tijhuis
+    Company      : Denko ICT
+    
+    Requirements:
+    - Administrative privileges
+    - Internet connection for downloading drivers
+    - WinGet (optional but recommended)
+    
+    Exit codes:
+    - 0: Success or no updates needed
+    - 1: Errors occurred during update process
+
+.LINK
+    Project Site: https://github.com/Stensel8/DenkoICT
 #>
+
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipDell,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipHP,
+    
+    [Parameter(Mandatory = $false)]
+    [int]$MaxDrivers = 10
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Continue'
 
 Write-Host "Starting Driver Update (Post-OOBE)..." -ForegroundColor Cyan
 
@@ -25,7 +98,7 @@ Write-Host "Starting Driver Update (Post-OOBE)..." -ForegroundColor Cyan
 Write-Host "Performing pre-flight checks..." -ForegroundColor Gray
 
 # Prepare log directories for tool output
-$globalLogRoot = Join-Path -Path $env:ProgramData -ChildPath 'DenkoICT\\Logs'
+$globalLogRoot = Join-Path -Path $env:ProgramData -ChildPath 'DenkoICT\Logs'
 $driverLogRoot = Join-Path -Path $globalLogRoot -ChildPath 'Drivers'
 $hpLogRoot = Join-Path -Path $driverLogRoot -ChildPath 'HP'
 $dellLogRoot = Join-Path -Path $driverLogRoot -ChildPath 'Dell'
@@ -45,10 +118,10 @@ try {
     $wingetVersion = winget --version 2>$null
     if ($wingetVersion) {
         $wingetAvailable = $true
-        Write-Host "✓ WinGet is available (version: $($wingetVersion.Trim()))" -ForegroundColor Green
+        Write-Host "[OK] WinGet is available (version: $($wingetVersion.Trim()))" -ForegroundColor Green
     }
 } catch {
-    Write-Warning "✗ WinGet is not available - some driver tools may not install"
+    Write-Warning "[X] WinGet is not available - some driver tools may not install"
     Write-Host "Consider installing WinGet first for best results" -ForegroundColor Yellow
 }
 
@@ -225,7 +298,7 @@ function Update-HPDrivers {
     Write-Host "Installing HP Client Management Script Library (HP CMSL)..." -ForegroundColor Yellow
     
     try {
-        # First, try the simple HP Image Assistant approach (fallback first)
+        # First, try the simple HP Image Assistant approach
         Write-Host "Trying HP Image Assistant as primary method..." -ForegroundColor Cyan
         
         if ($wingetAvailable) {
@@ -314,7 +387,7 @@ function Update-HPDrivers {
         try {
             Write-Host "Loading HP CMSL module..." -ForegroundColor Cyan
             Import-Module HPCMSL -Force -ErrorAction Stop
-            Write-Host "  ✓ HPCMSL module loaded successfully" -ForegroundColor Green
+            Write-Host "  [OK] HPCMSL module loaded successfully" -ForegroundColor Green
         } catch {
             Write-Warning "Failed to import HPCMSL module: $($_.Exception.Message)"
             Write-Host "Please ensure HP CMSL is properly installed and try running as Administrator" -ForegroundColor Yellow
@@ -344,10 +417,9 @@ function Update-HPDrivers {
             Write-Host "Found $($softpaqs.Count) driver updates available" -ForegroundColor Green
             
             # Limit to reasonable number of drivers to avoid timeout
-            $maxDrivers = 10
-            if ($softpaqs.Count -gt $maxDrivers) {
-                Write-Host "Limiting to first $maxDrivers drivers for faster installation" -ForegroundColor Yellow
-                $softpaqs = $softpaqs | Select-Object -First $maxDrivers
+            if ($softpaqs.Count -gt $MaxDrivers) {
+                Write-Host "Limiting to first $MaxDrivers drivers for faster installation" -ForegroundColor Yellow
+                $softpaqs = $softpaqs | Select-Object -First $MaxDrivers
             }
             
             # Create temp directory for downloads
@@ -394,22 +466,22 @@ function Update-HPDrivers {
                         
                         # Check various success exit codes
                         if ($installResult.ExitCode -in @(0, 3010, 1641)) {
-                            Write-Host "  ✓ Successfully installed $($softpaq.Name)" -ForegroundColor Green
+                            Write-Host "  [OK] Successfully installed $($softpaq.Name)" -ForegroundColor Green
                             $successCount++
                         } else {
-                            Write-Warning "  ✗ Installation failed with exit code: $($installResult.ExitCode)"
+                            Write-Warning "  [X] Installation failed with exit code: $($installResult.ExitCode)"
                             $failCount++
                         }
                         
                         # Clean up downloaded file
                         Remove-Item -Path $downloadPath -Force -ErrorAction SilentlyContinue
                     } else {
-                        Write-Warning "  ✗ Failed to download $($softpaq.Name)"
+                        Write-Warning "  [X] Failed to download $($softpaq.Name)"
                         $failCount++
                     }
                     
                 } catch {
-                    Write-Warning "✗ Failed to install $($softpaq.Name): $($_.Exception.Message)"
+                    Write-Warning "[X] Failed to install $($softpaq.Name): $($_.Exception.Message)"
                     $failCount++
                 }
                 
@@ -443,15 +515,25 @@ function Update-HPDrivers {
 # Main execution
 try {
     if ($manufacturer -like "*dell*") {
-        Write-Host "Detected Dell system - running Dell Command Update" -ForegroundColor Green
-        Update-DellDrivers
+        if ($SkipDell) {
+            Write-Host "Skipping Dell drivers (SkipDell parameter set)" -ForegroundColor Yellow
+        } else {
+            Write-Host "Detected Dell system - running Dell Command Update" -ForegroundColor Green
+            Update-DellDrivers
+        }
     } elseif ($manufacturer -like "*hewlett*" -or $manufacturer -like "*hp*") {
-        Write-Host "Detected HP system - running HP driver updates" -ForegroundColor Green
-        Update-HPDrivers
+        if ($SkipHP) {
+            Write-Host "Skipping HP drivers (SkipHP parameter set)" -ForegroundColor Yellow
+        } else {
+            Write-Host "Detected HP system - running HP driver updates" -ForegroundColor Green
+            Update-HPDrivers
+        }
     } elseif ($manufacturer -eq "unknown") {
         Write-Warning "Could not detect system manufacturer. Attempting HP method as fallback (most common)..."
         Write-Host "If this fails, please run the script on a Dell system, or install drivers manually" -ForegroundColor Yellow
-        Update-HPDrivers
+        if (-not $SkipHP) {
+            Update-HPDrivers
+        }
     } else {
         Write-Warning "Unsupported or unrecognized manufacturer: $manufacturer"
         Write-Host "Supported manufacturers: Dell, HP/Hewlett-Packard" -ForegroundColor Yellow
@@ -465,6 +547,7 @@ try {
     }
     
     Write-Host "`nDriver update process completed!" -ForegroundColor Green
+    exit 0
     
 } catch {
     Write-Warning "Error during driver update: $($_.Exception.Message)"
@@ -473,4 +556,5 @@ try {
     Write-Host "- Ensure you have internet connectivity" -ForegroundColor Gray
     Write-Host "- Try running the script as Administrator" -ForegroundColor Gray
     Write-Host "- Check Windows Update for basic driver updates" -ForegroundColor Gray
+    exit 1
 }
