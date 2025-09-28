@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.0.1
+.VERSION 1.1.0
 
 .AUTHOR Sten Tijhuis
 
@@ -11,8 +11,9 @@
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
 .RELEASENOTES
-[Version 1.0.0] - Initial Release. Updates all applications via WinGet.
+[Version 1.1.0] - Added WhatIf support, standardized logging, and administrator validation.
 [Version 1.0.1] - Improved error handling and logging.
+[Version 1.0.0] - Initial Release. Updates all applications via WinGet.
 #>
 
 <#
@@ -67,7 +68,9 @@
     Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
-[CmdletBinding()]
+#requires -Version 5.1
+
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory = $false)]
     [string[]]$ExcludeApps = @(),
@@ -81,6 +84,15 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
+
+$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'DenkoICT.Common.ps1'
+if (-not (Test-Path -Path $commonModule)) {
+    throw "Unable to locate shared helper module at $commonModule"
+}
+
+. $commonModule
+
+Assert-DenkoAdministrator
 
 # Function to write colored and logged output
 function Write-ColorLog {
@@ -96,16 +108,15 @@ function Write-ColorLog {
     # Write to log file
     Add-Content -Path $LogPath -Value $logMessage -Force
     
-    # Write to console with color
-    $color = switch ($Level) {
-        'Success' { 'Green' }
-        'Warning' { 'Yellow' }
-        'Error' { 'Red' }
-        'Highlight' { 'Cyan' }
-        default { 'White' }
+    $denkoLevel = switch ($Level) {
+        'Success' { 'Success' }
+        'Warning' { 'Warning' }
+        'Error'   { 'Error' }
+        'Highlight' { 'Verbose' }
+        default   { 'Info' }
     }
-    
-    Write-Host $Message -ForegroundColor $color
+
+    Write-DenkoLog -Message $Message -Level $denkoLevel
 }
 
 # Function to check if WinGet is available
@@ -236,7 +247,6 @@ function Update-Applications {
 }
 
 # Main execution
-Clear-Host
 
 Write-ColorLog "=== WinGet Application Update Started ===" -Level 'Highlight'
 Write-ColorLog "User: $env:USERNAME" -Level 'Info'
@@ -255,8 +265,22 @@ if (-not (Test-WinGetAvailable)) {
 # Get available updates
 $updates = Get-WinGetUpdates
 
-# Perform updates
-$exitCode = Update-Applications -Updates $updates
+# Determine whether to perform updates (respects -WhatIf)
+$shouldApplyUpdates = $PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Install available WinGet application updates')
+
+if ($ShowOnly) {
+    Write-ColorLog "ShowOnly mode enabled. Listing updates without installing." -Level 'Warning'
+    if ($updates.Count -gt 0) {
+        Write-ColorLog "Updates available:" -Level 'Highlight'
+        $updates | ForEach-Object { Write-ColorLog "$($_.Name) | $($_.CurrentVersion) → $($_.AvailableVersion)" -Level 'Highlight' }
+    }
+    $exitCode = 0
+} elseif (-not $shouldApplyUpdates) {
+    Write-ColorLog "WhatIf: Skipping installation of WinGet updates." -Level 'Warning'
+    $exitCode = 0
+} else {
+    $exitCode = Update-Applications -Updates $updates
+}
 
 Write-ColorLog "Log file saved to: $LogPath" -Level 'Info'
 Write-ColorLog "`nExiting..." -Level 'Highlight'

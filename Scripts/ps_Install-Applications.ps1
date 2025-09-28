@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.0.2
+.VERSION 1.1.0
 
 .AUTHOR Sten Tijhuis
 
@@ -11,9 +11,10 @@
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
 .RELEASENOTES
-[Version 1.0.0] - Initial Release. Installs applications using WinGet package manager.
-[Version 1.0.1] - Added 7zip to default applications.
+[Version 1.1.0] - Added WhatIf support, centralized admin validation, and standardized output.
 [Version 1.0.2] - Improved error handling and logging.
+[Version 1.0.1] - Added 7zip to default applications.
+[Version 1.0.0] - Initial Release. Installs applications using WinGet package manager.
 #>
 
 <#
@@ -68,7 +69,9 @@
     Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
-[CmdletBinding()]
+#requires -Version 5.1
+
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory = $false)]
     [string[]]$Applications = @(
@@ -86,6 +89,15 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
+
+$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'DenkoICT.Common.ps1'
+if (-not (Test-Path -Path $commonModule)) {
+    throw "Unable to locate shared helper module at $commonModule"
+}
+
+. $commonModule
+
+Assert-DenkoAdministrator
 
 # Initialize logging
 function Write-Log {
@@ -201,11 +213,22 @@ if (-not (Test-WinGetAvailable)) {
     exit 1
 }
 
+$shouldInstall = $PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Install applications via WinGet')
+
+if (-not $shouldInstall) {
+    Write-Log 'WhatIf: Simulation mode - no applications will be installed.' -Level 'Warning'
+}
+
 # Install applications
 $successCount = 0
 $failCount = 0
 
 foreach ($app in $Applications) {
+    if (-not $shouldInstall) {
+        Write-Log "WhatIf: Would install $app" -Level 'Warning'
+        continue
+    }
+
     if (Install-Application -AppId $app) {
         $successCount++
     } else {

@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.0.1
+.VERSION 1.1.0
 
 .AUTHOR Sten Tijhuis
 
@@ -11,6 +11,7 @@
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
 .RELEASENOTES
+[Version 1.1.0] - Added WhatIf support, centralized logging, and admin validation.
 [Version 1.0.0] - Initial Release. Sets Windows desktop wallpaper to img19.jpg (dark theme).
 [Version 1.0.1] - Improved logging. NOTE: some EDRs may block this script.
 #>
@@ -58,7 +59,9 @@
     Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
-[CmdletBinding()]
+#requires -Version 5.1
+
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
     [Parameter(Mandatory = $false)]
     [ValidateScript({
@@ -70,6 +73,16 @@ param(
 
 # Set strict mode for better error handling
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'DenkoICT.Common.ps1'
+if (-not (Test-Path -Path $commonModule)) {
+    throw "Unable to locate shared helper module at $commonModule"
+}
+
+. $commonModule
+
+Assert-DenkoAdministrator
 
 # Define the Windows API code for setting wallpaper
 $wallpaperCode = @"
@@ -93,17 +106,21 @@ try {
         Add-Type $wallpaperCode -ErrorAction Stop
     }
     
-    # Set the wallpaper
-    # Parameters: SPI_SETDESKWALLPAPER (20), 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE (3)
-    $result = [Wallpaper]::SystemParametersInfo(20, 0, $WallpaperPath, 3)
-    
-    if ($result) {
-        Write-Host "Wallpaper successfully set to: $WallpaperPath" -ForegroundColor Green
+    if ($PSCmdlet.ShouldProcess($WallpaperPath, 'Set desktop wallpaper')) {
+        # Parameters: SPI_SETDESKWALLPAPER (20), 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE (3)
+        $result = [Wallpaper]::SystemParametersInfo(20, 0, $WallpaperPath, 3)
+
+        if ($result) {
+            Write-DenkoLog -Message "Wallpaper successfully set to: $WallpaperPath" -Level Success
+        } else {
+            $lastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            throw "Failed to set wallpaper. Win32 error code: $lastError"
+        }
     } else {
-        $lastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        throw "Failed to set wallpaper. Win32 error code: $lastError"
+        Write-Verbose 'WhatIf: Skipping wallpaper update.'
+        Write-DenkoLog -Message "WhatIf: Would set wallpaper to $WallpaperPath" -Level Warning
     }
-    
+
 } catch {
     Write-Error "Failed to set wallpaper: $_"
     exit 1
