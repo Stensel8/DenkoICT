@@ -53,21 +53,21 @@ if (-not (Test-Path -Path $commonModule)) {
 
 . $commonModule
 
-Assert-DenkoAdministrator
+Assert-AdminRights
 
 $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
 
 if ($PSCmdlet.ShouldProcess($regPath, 'Disable First Logon Animation')) {
     if (-not (Test-Path -Path $regPath)) {
         New-Item -Path $regPath -Force | Out-Null
-        Write-Verbose "Created registry key at $regPath"
-        Write-DenkoLog -Message "Created registry key at $regPath" -Level Verbose
+    Write-Verbose "Created registry key at $regPath"
+    Write-Log -Message "Created registry key at $regPath" -Level Verbose
     }
 
     Set-ItemProperty -Path $regPath -Name EnableFirstLogonAnimation -Type DWord -Value 0
     Write-Verbose 'Set EnableFirstLogonAnimation to 0'
-    Write-DenkoLog -Message 'First logon animation disabled.' -Level Success
+    Write-Log -Message 'First logon animation disabled.' -Level Success
 } else {
     Write-Verbose 'WhatIf: Skipping registry modifications.'
-    Write-DenkoLog -Message 'WhatIf: Skipping registry modifications.' -Level Verbose
+    Write-Log -Message 'WhatIf: Skipping registry modifications.' -Level Verbose
 }

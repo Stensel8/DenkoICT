@@ -92,7 +92,7 @@ if (-not (Test-Path -Path $commonModule)) {
 
 . $commonModule
 
-Assert-DenkoAdministrator
+Assert-AdminRights
 
 # Function to write colored and logged output
 function Write-ColorLog {
@@ -108,7 +108,7 @@ function Write-ColorLog {
     # Write to log file
     Add-Content -Path $LogPath -Value $logMessage -Force
     
-    $denkoLevel = switch ($Level) {
+    $logLevel = switch ($Level) {
         'Success' { 'Success' }
         'Warning' { 'Warning' }
         'Error'   { 'Error' }
@@ -116,7 +116,7 @@ function Write-ColorLog {
         default   { 'Info' }
     }
 
-    Write-DenkoLog -Message $Message -Level $denkoLevel
+    Write-Log -Message $Message -Level $logLevel
 }
 
 # Function to check if WinGet is available
