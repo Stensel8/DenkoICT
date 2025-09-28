@@ -1,120 +1,184 @@
 ﻿<#
-Revision: 2.0.0
-Author: Sten Tijhuis (Stensel8)
-Date: 15/09/2025
-Purpose/Change: Refactored and moved to Scripts folder. See original credits below.
 .SYNOPSIS
-  <Overview of script>
+  PowerShell Preamble - Standard initialization script for DenkoICT scripts
 .DESCRIPTION
-  <Brief description of script>
-.PARAMETER <Parameter_Name>
-    <Brief description of parameter input required. Repeat this attribute if required>
+  Sets up common environment variables, logging functions, and utilities for DenkoICT scripts
 .INPUTS
-  <Inputs if any, otherwise state None>
+  None
 .OUTPUTS
-  <Outputs if any, otherwise state None - example: Log file stored in C:\Windows\Temp\<name>.log>
+  Log file stored in C:\IT\<scriptname>.log
 .NOTES
-  Version:        1.0
-  Author:         Jeffery Field
-  Creation Date:  5/1/24
-  Purpose/Change: Initial script development
+  Version History:
+  1.0.0 - 05/01/2024 - Jeffery Field
+    * Initial script development
   
+  2.0.0 - 15/09/2024 - Sten Tijhuis (Stensel8)
+    * Refactored and moved to Scripts folder
+    * Added DenkoLog functions and standardized formatting
+  
+  2.1.0 - [Current Date] - Sten Tijhuis (Stensel8)
+    * Reorganized structure for better readability
+    * Standardized versioning scheme
+    * Updated attribution
+
 .EXAMPLE
-  <Example goes here. Repeat this attribute for more than one example>
+  . .\ps_Preamble.ps1
 #>
 
-#[Initialisations]-------------------------------------------------------------------------------[Initialisations]--------------------------------------------------------------------------------[Initialisations]
+Set-StrictMode -Version Latest
 
-#Set Error Action to Silently Continue
+#region Initialization
 $ErrorActionPreference = "SilentlyContinue"
-
 $PSModuleAutoloadingPreference = 'All'
 
+$ScriptVersion   = '2.1.0'
+$Scriptname      = $MyInvocation.MyCommand.Name
+$Scriptpath      = $MyInvocation.MyCommand.Path
+$FullScriptpath  = $MyInvocation.MyCommand.PSCommandPath
 
-#[Declarations]-------------------------------------------------------------------------------[Declarations]--------------------------------------------------------------------------------[Declarations]
-#Script Version
-$ScriptVersion = "1.0"
-
-
-#Script Info
-$Scriptname = $MyInvocation.MyCommand.name
-$Scriptpath = $myinvocation.mycommand.path
-$FullScriptpath = $myinvocation.mycommand.PSCommandPath
-
-
-#Log File Info
-$LogPath = "C:\IT"
+$LogPath = 'C:\IT'
 $LogName = "$Scriptname.log"
 $LogFile = Join-Path -Path $LogPath -ChildPath $LogName
 
-#Check log file size. Create a new one if it's larger than 10 MB.
-[int]$LogFileSize = (Get-ChildItem -Path $LogFile | Select-Object -Property Name, @{Name = 'LengthInMB'; Expression = { [Math]::round($_.Length / 1MB,2) } }, Directory).LengthInMB
+if (-not (Test-Path -Path $LogPath)) {
+  $null = New-Item -Path $LogPath -ItemType Directory -Force
+}
+#endregion Initialization
 
-If($LogFileSize -ge "10"){
-Start-Transcript -Path $LogPath\$LogName
-Write-Host "Starting script $($Scriptname). With a new log."
-}else{
-Start-Transcript -Path $LogPath\$LogName -Append
-Write-Host "Starting script $($Scriptname). Appending the log."
+#region Functions
+function Write-DenkoLog {
+  <#
+  .SYNOPSIS
+    Writes a timestamped message to the console, optionally in color.
+  .DESCRIPTION
+    Formats output with a timestamp prefix and color coding based on the
+    supplied level.
+  .PARAMETER Message
+    Text to emit to the console.
+  .PARAMETER Level
+    Semantic level for the message. Supports Info, Success, Warning, Error,
+    or Verbose.
+  .EXAMPLE
+    Write-DenkoLog -Message 'Starting deployment' -Level Info
+  #>
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Message,
+
+    [Parameter()]
+    [ValidateSet('Info','Success','Warning','Error','Verbose')]
+    [string]$Level = 'Info'
+  )
+
+  $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+  $formatted = "[$timestamp] [$Level] $Message"
+
+  $color = switch ($Level) {
+    'Success' { 'Green' }
+    'Warning' { 'Yellow' }
+    'Error'   { 'Red' }
+    'Verbose' { 'Cyan' }
+    default   { 'White' }
+  }
+
+  Write-Host $formatted -ForegroundColor $color
 }
 
+function Assert-DenkoAdministrator {
+  <#
+  .SYNOPSIS
+    Ensures the current session runs with administrative rights.
+  .DESCRIPTION
+    Throws a terminating error when the current security principal isn't a
+    member of the local Administrators group.
+  .EXAMPLE
+    Assert-DenkoAdministrator
+  .NOTES
+    Requires Windows PowerShell 5.1 or later.
+  #>
+  [CmdletBinding()]
+  param()
 
-$Dir = Split-Path $scriptpath
+  $identity  = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 
-If($Dir -like "*IMECache*" -or $Dir -like "*Microsoft Intune Management Extension*"){
-Write-Host "Looks like this running from Intune. Going to switch to invocation"
-Set-Location $Dir
+  if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw 'This script requires administrative privileges. Please run in an elevated PowerShell session.'
+  }
 }
 
-
-
-#Write an event to the event log.
-New-EventLog -source Intune-Script -LogName Application -Verbose -ErrorAction ignore
-Write-EventLog -LogName "Application" -Source "Intune-Script" -EventID 1000 -EntryType Information -Message "Starting $($Scriptname)"
-
-
-#[Functions]-------------------------------------------------------------------------------[Functions]--------------------------------------------------------------------------------[Functions]
-
-#========== Check Admin Function ================
-
-Function Global:Check-Admin {
-<#  
-.SYNOPSIS  
+function Global:Check-Admin {
+  <#
+  .SYNOPSIS
     Checks to see what context the script is running in.
-
-.DESCRIPTION
+  .DESCRIPTION
     Checks to see what context the script is running in.
-
-.EXAMPLE
+  .EXAMPLE
     Check-Admin
+  .NOTES
+    Version : 1.0.0
+    Author: Jeffery Field
+  #>
+  [CmdletBinding()]
 
-.NOTES  
- Version : 1.0.0
- Author: Jeffery Field
- LastUpdate: 3/26/24 1:38 PM
- Source: Documents - Teammate Experience\Intune\Scripts
- Change Log:
-#>
+  $user = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = [Security.Principal.WindowsPrincipal]::new($user)
+  $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
 
-    [CmdletBinding()]  
- 
-    $user = [Security.Principal.WindowsIdentity]::GetCurrent();
-    $Admin = (New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
+  if ($isAdmin) {
+    $Global:Context = 'Admin'
+    return 'Admin'
+  }
 
-    If($Admin -eq "True"){
-    $Global:Context = "Admin"
-    return "Admin"
-    }else{
-    $Global:Context = "Standard"
-    return "Standard"
-    }
+  $Global:Context = 'Standard'
+  return 'Standard'
+}
+#endregion Functions
+
+#region Main Execution
+[double]$LogFileSize = 0
+if (Test-Path -Path $LogFile) {
+  $logInfo = Get-Item -Path $LogFile
+  $LogFileSize = [Math]::Round($logInfo.Length / 1MB, 2)
 }
 
+if ($LogFileSize -ge 10) {
+  Start-Transcript -Path $LogFile
+  Write-DenkoLog -Message "Starting script $Scriptname with a new log." -Level Info
+} else {
+  Start-Transcript -Path $LogFile -Append
+  Write-DenkoLog -Message "Starting script $Scriptname appending the log." -Level Info
+}
 
+$Dir = Split-Path -Path $Scriptpath
 
-#[End]-------------------------------------------------------------------------------[End]--------------------------------------------------------------------------------[End]
+if ($Dir -like '*IMECache*' -or $Dir -like '*Microsoft Intune Management Extension*') {
+  Write-DenkoLog -Message 'Detected Intune execution context. Switching to invocation directory.' -Level Verbose
+  Set-Location -Path $Dir
+}
 
+try {
+  if (-not [System.Diagnostics.EventLog]::SourceExists('Intune-Script')) {
+    New-EventLog -Source 'Intune-Script' -LogName 'Application'
+    Write-DenkoLog -Message 'Registered event log source Intune-Script.' -Level Verbose
+  }
+} catch {
+  Write-DenkoLog -Message "Unable to register event log source Intune-Script: $($_.Exception.Message)" -Level Verbose
+}
+
+try {
+  Write-EventLog -LogName 'Application' -Source 'Intune-Script' -EventID 1000 -EntryType Information -Message "Starting $Scriptname"
+} catch {
+  Write-DenkoLog -Message "Unable to write to event log: $($_.Exception.Message)" -Level Verbose
+}
+#endregion Main Execution
+
+#region Cleanup
 $Variables = Get-Variable
-Foreach($Variable in $Variables){Write-Host "Variable $($Variable.Name) is set to $($Variable.Value)"}
+foreach ($Variable in $Variables) {
+  Write-DenkoLog -Message "Variable $($Variable.Name) is set to $($Variable.Value)" -Level Verbose
+}
 
 Stop-Transcript
+#endregion Cleanup

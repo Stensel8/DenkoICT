@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.1.1
+.VERSION 1.3.0
 
 .AUTHOR Sten Tijhuis
 
@@ -11,9 +11,11 @@
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
 .RELEASENOTES
-[Version 1.0.0] - Initial Release. Removes bloatware apps from Windows.
-[Version 1.1.0] - Added registry modifications to prevent reinstallation of bloatware.
+[Version 1.3.0] - Adopted SupportsShouldProcess, centralized admin elevation, and improved WhatIf consistency.
+[Version 1.2.0] - Hardened Start Menu recommendation suppression using additional policy keys.
 [Version 1.1.1] - Added more known bloatware apps to the removal list.
+[Version 1.1.0] - Added registry modifications to prevent reinstallation of bloatware.
+[Version 1.0.0] - Initial Release. Removes bloatware apps from Windows.
 #>
 
 <#
@@ -33,9 +35,6 @@
     - News and weather apps
     - Other unnecessary pre-installed apps
 
-.PARAMETER WhatIf
-    Performs a dry run, showing what would be removed without making changes.
-
 .PARAMETER LogPath
     Path for the detailed log file. Default creates log in temp directory.
 
@@ -53,10 +52,11 @@
     Console output with removal summary and detailed log file.
 
 .NOTES
-    Version      : 1.1.1
+    Version      : 1.2.0
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     
+    Supports -WhatIf for safe simulation.
     Requires administrative privileges for full effectiveness.
     Registry changes prevent automatic reinstallation of bloatware.
     
@@ -68,21 +68,67 @@
     Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
-[CmdletBinding(SupportsShouldProcess)]
+#requires -Version 5.1
+
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
-    [Parameter(Mandatory = $false)]
-    [switch]$WhatIf,
-    
     [Parameter(Mandatory = $false)]
     [string]$LogPath = "$env:TEMP\DenkoICT-Debloat-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 )
+
+# --- Elevate if necessary ---
+$currentIdentity  = [Security.Principal.WindowsIdentity]::GetCurrent()
+$currentPrincipal = [Security.Principal.WindowsPrincipal]::new($currentIdentity)
+$isAdmin          = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$invokedWithWhatIf = $PSBoundParameters.ContainsKey('WhatIf') -or $WhatIfPreference
+
+if (-not $isAdmin) {
+    if ($invokedWithWhatIf) {
+        Write-Host "Running in WhatIf mode without elevation. Some operations may be simulated or skipped due to limited permissions." -ForegroundColor Yellow
+    } else {
+        Write-Host "Elevation required. Restarting script with administrative privileges..." -ForegroundColor Yellow
+
+        try {
+            $hostPath     = (Get-Process -Id $PID -ErrorAction Stop).Path
+            $argumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+
+            foreach ($param in $PSBoundParameters.GetEnumerator()) {
+                switch ($param.Key) {
+                    'WhatIf' {
+                        if ($param.Value) {
+                            $argumentList += '-WhatIf'
+                        }
+                    }
+                    'LogPath' {
+                        $argumentList += '-LogPath'
+                        $argumentList += $param.Value
+                    }
+                }
+            }
+
+            if ($MyInvocation.UnboundArguments) {
+                $argumentList += $MyInvocation.UnboundArguments
+            }
+
+            Start-Process -FilePath $hostPath -ArgumentList $argumentList -Verb RunAs | Out-Null
+        } catch {
+            Write-Host "Failed to restart with elevated privileges: $($_.Exception.Message)" -ForegroundColor Red
+        }
+
+        exit
+    }
+}
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$script:ShouldExecute = $PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Remove Denko ICT bloatware packages and policies')
 
 # List of unwanted apps to remove. Wildcards (*) are supported.
 $AppsToRemove = @(
     # Communication and Social
     "Microsoft.SkypeApp",
     "Microsoft.YourPhone",
-    "MicrosoftTeams", # This is the new personal Teams app in Windows 11
     "Microsoft.People",
 
     # Media and Entertainment
@@ -151,7 +197,6 @@ function Write-Log {
 function Remove-AppxByPattern {
     param(
         [string]$Pattern,
-        [switch]$WhatIf,
         [System.Collections.ArrayList]$Succeeded,
         [System.Collections.ArrayList]$Failed
     )
@@ -170,7 +215,7 @@ function Remove-AppxByPattern {
         $packageName = $pkg.PackageFullName
         Write-Log "Found installed package: $($pkg.Name) | $packageName"
         
-        if ($WhatIf) {
+        if (-not $script:ShouldExecute) {
             Write-Log "WhatIf: Would remove package $packageName for all users" -Level 'Warning'
             $Succeeded.Add("Would remove: $packageName") | Out-Null
         } else {
@@ -189,7 +234,6 @@ function Remove-AppxByPattern {
 function Remove-ProvisionedByPattern {
     param(
         [string]$Pattern,
-        [switch]$WhatIf,
         [System.Collections.ArrayList]$Succeeded,
         [System.Collections.ArrayList]$Failed
     )
@@ -208,7 +252,7 @@ function Remove-ProvisionedByPattern {
         $packageName = $p.PackageName
         Write-Log "Found provisioned package: $($p.DisplayName) | $packageName"
         
-        if ($WhatIf) {
+        if (-not $script:ShouldExecute) {
             Write-Log "WhatIf: Would remove provisioned package $packageName" -Level 'Warning'
             $Succeeded.Add("Would remove provisioned: $packageName") | Out-Null
         } else {
@@ -226,6 +270,10 @@ function Remove-ProvisionedByPattern {
 
 # --- Main Execution ---
 
+if (-not $script:ShouldExecute) {
+    Write-Log 'WhatIf: Simulation mode - no changes will be applied.' -Level 'Warning'
+}
+
 Write-Log "=== Bloatware Removal Started ===" -Level 'Info'
 Write-Log "User: $env:USERNAME" -Level 'Info'
 Write-Log "Computer: $env:COMPUTERNAME" -Level 'Info'
@@ -238,8 +286,8 @@ $failedRemovals = [System.Collections.ArrayList]::new()
 foreach ($appName in $AppsToRemove) {
     $pattern = "*$appName*"
     
-    Remove-AppxByPattern -Pattern $pattern -WhatIf:$WhatIf -Succeeded $succeededRemovals -Failed $failedRemovals
-    Remove-ProvisionedByPattern -Pattern $pattern -WhatIf:$WhatIf -Succeeded $succeededRemovals -Failed $failedRemovals
+    Remove-AppxByPattern -Pattern $pattern -Succeeded $succeededRemovals -Failed $failedRemovals
+    Remove-ProvisionedByPattern -Pattern $pattern -Succeeded $succeededRemovals -Failed $failedRemovals
 }
 
 # --- Disable Consumer Features ---
@@ -257,13 +305,31 @@ $registryConfigs = @(
         Name = "Start_IrisRecommendations"
         Value = 0
         Description = "Disables Start Menu suggestions"
+    },
+    @{
+        Path = "HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start"
+        Name = "HideRecommendedSection"
+        Value = 1
+        Description = "Hides Start Menu recommended section via PolicyManager"
+    },
+    @{
+        Path = "HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Education"
+        Name = "IsEducationEnvironment"
+        Value = 1
+        Description = "Signals education environment to suppress recommendations"
+    },
+    @{
+        Path = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
+        Name = "HideRecommendedSection"
+        Value = 1
+        Description = "Hides Start Menu recommended section via Explorer policy"
     }
 )
 
 foreach ($config in $registryConfigs) {
     try {
         if (-not (Test-Path $config.Path)) {
-            if ($WhatIf) {
+                if (-not $script:ShouldExecute) {
                 Write-Log "WhatIf: Would create registry path: $($config.Path)" -Level 'Warning'
             } else {
                 New-Item -Path $config.Path -Force | Out-Null
@@ -271,7 +337,7 @@ foreach ($config in $registryConfigs) {
             }
         }
         
-        if ($WhatIf) {
+            if (-not $script:ShouldExecute) {
             Write-Log "WhatIf: Would set $($config.Name) to $($config.Value) at $($config.Path)" -Level 'Warning'
         } else {
             New-ItemProperty -Path $config.Path -Name $config.Name -Value $config.Value -PropertyType DWord -Force | Out-Null
