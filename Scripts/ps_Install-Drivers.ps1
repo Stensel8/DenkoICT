@@ -24,6 +24,21 @@ Write-Host "Starting Driver Update (Post-OOBE)..." -ForegroundColor Cyan
 # Pre-flight checks
 Write-Host "Performing pre-flight checks..." -ForegroundColor Gray
 
+# Prepare log directories for tool output
+$globalLogRoot = Join-Path -Path $env:ProgramData -ChildPath 'DenkoICT\\Logs'
+$driverLogRoot = Join-Path -Path $globalLogRoot -ChildPath 'Drivers'
+$hpLogRoot = Join-Path -Path $driverLogRoot -ChildPath 'HP'
+$dellLogRoot = Join-Path -Path $driverLogRoot -ChildPath 'Dell'
+
+foreach ($path in @($globalLogRoot, $driverLogRoot, $hpLogRoot, $dellLogRoot)) {
+    if (-not (Test-Path -Path $path)) {
+        New-Item -Path $path -ItemType Directory -Force | Out-Null
+    }
+}
+
+$script:HPLogRoot = $hpLogRoot
+$script:DellLogRoot = $dellLogRoot
+
 # Check for WinGet availability
 $wingetAvailable = $false
 try {
@@ -38,7 +53,6 @@ try {
 }
 
 # Check if we're in a post-OOBE environment
-$isPostOOBE = $true
 try {
     $apStatus = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Provisioning\Diagnostics\AutoPilot" -Name "CloudAssignedTenantId" -ErrorAction SilentlyContinue
     if ($apStatus) {
@@ -122,6 +136,9 @@ function Invoke-WithRetry {
 # Dell Command Update
 function Update-DellDrivers {
     Write-Host "Installing Dell Command Update..." -ForegroundColor Yellow
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $scanLog = Join-Path -Path $script:DellLogRoot -ChildPath "DCU-Scan-$timestamp.log"
+    $applyLog = Join-Path -Path $script:DellLogRoot -ChildPath "DCU-Apply-$timestamp.log"
     
     try {
         if ($wingetAvailable) {
@@ -158,22 +175,38 @@ function Update-DellDrivers {
             
             # First scan for updates
             Write-Host "Scanning for Dell updates..." -ForegroundColor Gray
-            $scanResult = Start-WithTimeout $dcu @("/scan", "-silent") 5
+            $scanResult = Start-WithTimeout $dcu @("/scan", "-silent", "/log=$scanLog") 5
             
             if ($scanResult -eq 0) {
                 # Then apply updates
                 Write-Host "Applying Dell updates..." -ForegroundColor Gray
-                $result = Start-WithTimeout $dcu @("/applyUpdates", "-reboot=disable", "-silent") 15
+                $result = Start-WithTimeout $dcu @("/applyUpdates", "-reboot=disable", "-silent", "/log=$applyLog") 15
                 
                 switch ($result) {
-                    0 { Write-Host "`nDell updates completed successfully" -ForegroundColor Green }
+                    0 {
+                        Write-Host "`nDell updates completed successfully" -ForegroundColor Green
+                        Write-Host "  Scan log:    $scanLog" -ForegroundColor Gray
+                        Write-Host "  Install log: $applyLog" -ForegroundColor Gray
+                    }
                     1 { Write-Host "`nDell updates completed - reboot recommended" -ForegroundColor Yellow }
-                    500 { Write-Host "`nDell system is up to date - no updates available" -ForegroundColor Green }
-                    -1 { Write-Warning "`nDell update process timed out" }
-                    default { Write-Warning "`nDell updates may have failed (exit code: $result)" }
+                    500 {
+                        Write-Host "`nDell system is up to date - no updates available" -ForegroundColor Green
+                        Write-Host "  Scan log: $scanLog" -ForegroundColor Gray
+                    }
+                    -1 {
+                        Write-Warning "`nDell update process timed out"
+                        Write-Warning "  See $applyLog or $scanLog for partial details"
+                    }
+                    default {
+                        Write-Warning "`nDell updates may have failed (exit code: $result)"
+                        Write-Warning "  Review DCU logs at $applyLog"
+                    }
                 }
             } else {
                 Write-Warning "Dell update scan failed (exit code: $scanResult). Skipping update application."
+                if (Test-Path -Path $scanLog) {
+                    Write-Warning "  Review scan log: $scanLog"
+                }
             }
         } else {
             Write-Warning "Dell Command Update not found at any expected path"
@@ -214,17 +247,31 @@ function Update-HPDrivers {
         
         if (Test-Path $HPIAPath) {
             Write-Host "Running HP Image Assistant for driver updates..." -ForegroundColor Cyan
-            $downloadPath = "C:\SWSetup"
-            New-Item -ItemType Directory -Path $downloadPath -Force | Out-Null
+            $hpTimestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+            $hpWorkPath = Join-Path -Path $script:HPLogRoot -ChildPath "HPIA-$hpTimestamp"
+            $hpSoftPaqPath = Join-Path -Path $hpWorkPath -ChildPath 'Softpaqs'
+            New-Item -ItemType Directory -Path $hpWorkPath -Force | Out-Null
+            New-Item -ItemType Directory -Path $hpSoftPaqPath -Force | Out-Null
 
             # Run HPIA with better parameters for post-OOBE environment
-            $hpiaResult = Start-Process -FilePath $HPIAPath -ArgumentList "/Operation:Analyze", "/Category:Driver", "/Action:Install", "/Silent", "/ReportFolder:$downloadPath", "/SoftpaqDownloadFolder:$downloadPath" -Wait -PassThru -WindowStyle Hidden
+            $hpiaResult = Start-Process -FilePath $HPIAPath -ArgumentList "/Operation:Analyze", "/Category:Driver", "/Action:Install", "/Silent", "/ReportFolder:$hpWorkPath", "/SoftpaqDownloadFolder:$hpSoftPaqPath" -Wait -PassThru -WindowStyle Hidden
             
             if ($hpiaResult.ExitCode -eq 0) {
                 Write-Host "HP Image Assistant completed successfully" -ForegroundColor Green
+                $primaryReport = Get-ChildItem -Path $hpWorkPath -Filter *.html -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if ($primaryReport) {
+                    Write-Host "  Primary report: $($primaryReport.FullName)" -ForegroundColor Gray
+                }
+                Write-Host "  Additional artifacts located in: $hpWorkPath" -ForegroundColor Gray
                 return
             } else {
-                Write-Warning "HP Image Assistant failed with exit code: $($hpiaResult.ExitCode). Trying HP CMSL..."
+                $hpLog = Get-ChildItem -Path $hpWorkPath -Filter *.log -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if ($hpLog) {
+                    Write-Warning "HP Image Assistant failed with exit code: $($hpiaResult.ExitCode). Log: $($hpLog.FullName)"
+                } else {
+                    Write-Warning "HP Image Assistant failed with exit code: $($hpiaResult.ExitCode). No log file found in $hpWorkPath"
+                }
+                Write-Warning "Trying HP CMSL..."
             }
         } else {
             Write-Warning "HP Image Assistant not found. Trying HP CMSL approach..."
