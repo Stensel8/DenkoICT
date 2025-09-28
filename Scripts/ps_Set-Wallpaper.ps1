@@ -82,7 +82,7 @@ if (-not (Test-Path -Path $commonModule)) {
 
 . $commonModule
 
-Assert-DenkoAdministrator
+Assert-AdminRights
 
 # Define the Windows API code for setting wallpaper
 $wallpaperCode = @"
@@ -109,14 +109,14 @@ try {
         $result = [Wallpaper]::SystemParametersInfo(20, 0, $WallpaperPath, 3)
 
         if ($result) {
-            Write-DenkoLog -Message "Wallpaper successfully set to: $WallpaperPath" -Level Success
+            Write-Log -Message "Wallpaper successfully set to: $WallpaperPath" -Level Success
         } else {
             $lastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
             throw "Failed to set wallpaper. Win32 error code: $lastError"
         }
     } else {
-        Write-Verbose 'WhatIf: Skipping wallpaper update.'
-        Write-DenkoLog -Message "WhatIf: Would set wallpaper to $WallpaperPath" -Level Warning
+    Write-Verbose 'WhatIf: Skipping wallpaper update.'
+    Write-Log -Message "WhatIf: Would set wallpaper to $WallpaperPath" -Level Warning
     }
 
 } catch {
