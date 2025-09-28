@@ -101,10 +101,8 @@ public class Wallpaper {
 try {
     Write-Verbose "Setting wallpaper to: $WallpaperPath"
     
-    # Add the type if it doesn't exist
-    if (-not ([System.Management.Automation.PSTypeName]'Wallpaper').Type) {
-        Add-Type $wallpaperCode -ErrorAction Stop
-    }
+    # Add the type and cache the result
+    $WallpaperType = Add-Type -TypeDefinition $wallpaperCode -PassThru -ErrorAction Stop
     
     if ($PSCmdlet.ShouldProcess($WallpaperPath, 'Set desktop wallpaper')) {
         # Parameters: SPI_SETDESKWALLPAPER (20), 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE (3)
