@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
-	<!--https://schneegans.de/windows/unattend-generator/?LanguageMode=Unattended&UILanguage=nl-NL&Locale=nl-NL&Keyboard=00020409&GeoLocation=176&ProcessorArchitecture=amd64&ProcessorArchitecture=arm64&ComputerNameMode=Script&ComputerNameScript=%23+Get+the+serialnumber+of+the+machine+via+the+CIMinstance+cmdlet%0D%0A%24serial+%3D+%28Get-CimInstance+Win32_BIOS%29.SerialNumber%0D%0A%0D%0A%23+Format+the+serialnumber+to+give+back+the+last+4+characters+prefixed+with+%27PC-%27%0D%0Areturn+%27PC-%7B0%7D%27+-f+%24serial.Substring%28%24serial.Length+-+4%29%0D%0A&CompactOsMode=Never&TimeZoneMode=Explicit&TimeZone=W.+Europe+Standard+Time&PartitionMode=Interactive&DiskAssertionMode=Skip&WindowsEditionMode=Generic&WindowsEdition=pro&InstallFromMode=Automatic&PEMode=Default&UserAccountMode=Unattended&AccountName0=Denkoadmin&AccountDisplayName0=&AccountPassword0=&AccountGroup0=Administrators&AutoLogonMode=Own&PasswordExpirationMode=Unlimited&LockoutMode=Default&HideFiles=Hidden&ShowFileExtensions=true&LaunchToThisPC=true&ShowEndTask=true&TaskbarSearch=Label&TaskbarIconsMode=Default&DisableWidgets=true&DisableBingResults=true&StartTilesMode=Custom&StartTilesXml=%3CLayoutModificationTemplate+xmlns%3Adefaultlayout%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FFullDefaultLayout%22+xmlns%3Astart%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FStartLayout%22+Version%3D%221%22+xmlns%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FLayoutModification%22%3E%0D%0A++%3CLayoutOptions+StartTileGroupCellWidth%3D%226%22+%2F%3E%0D%0A++%3CDefaultLayoutOverride%3E%0D%0A++++%3CStartLayoutCollection%3E%0D%0A++++++%3Cdefaultlayout%3AStartLayout+GroupCellWidth%3D%226%22%3E%0D%0A++++++++%3Cstart%3AGroup+Name%3D%22%22%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%222%22+Row%3D%220%22+DesktopApplicationLinkPath%3D%22%25APPDATA%25%5CMicrosoft%5CWindows%5CStart+Menu%5CPrograms%5CSystem+Tools%5CFile+Explorer.lnk%22+%2F%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%220%22+Row%3D%220%22+DesktopApplicationLinkPath%3D%22%25ALLUSERSPROFILE%25%5CMicrosoft%5CWindows%5CStart+Menu%5CPrograms%5CMicrosoft+Edge.lnk%22+%2F%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%224%22+Row%3D%220%22+DesktopApplicationLinkPath%3D%22%25APPDATA%25%5CMicrosoft%5CWindows%5CStart+Menu%5CPrograms%5CSystem+Tools%5CImmersive+Control+Panel.lnk%22+%2F%3E%0D%0A++++++++%3C%2Fstart%3AGroup%3E%0D%0A++++++%3C%2Fdefaultlayout%3AStartLayout%3E%0D%0A++++%3C%2FStartLayoutCollection%3E%0D%0A++%3C%2FDefaultLayoutOverride%3E%0D%0A%3C%2FLayoutModificationTemplate%3E%0D%0A&StartPinsMode=Custom&StartPinsJson=%7B%0D%0A++%22pinnedList%22%3A+%5B%0D%0A++++%7B%0D%0A++++++%22desktopAppLink%22%3A+%22%25APPDATA%25%5C%5CMicrosoft%5C%5CWindows%5C%5CStart+Menu%5C%5CPrograms%5C%5CFile+Explorer.lnk%22%0D%0A++++%7D%2C%0D%0A++++%7B%0D%0A++++++%22desktopAppLink%22%3A+%22%25ALLUSERSPROFILE%25%5C%5CMicrosoft%5C%5CWindows%5C%5CStart+Menu%5C%5CPrograms%5C%5CMicrosoft+Edge.lnk%22%0D%0A++++%7D%2C%0D%0A++++%7B%0D%0A++++++%22desktopAppLink%22%3A+%22%25APPDATA%25%5C%5CMicrosoft%5C%5CWindows%5C%5CStart+Menu%5C%5CPrograms%5C%5CSystem+Tools%5C%5CImmersive+Control+Panel.lnk%22%0D%0A++++%7D%0D%0A++%5D%0D%0A%7D%0D%0A&EnableLongPaths=true&DisableLastAccess=true&DisableAppSuggestions=true&HideEdgeFre=true&DisableEdgeStartupBoost=true&DeleteWindowsOld=true&EffectsMode=Default&DesktopIconsMode=Custom&IconRecycleBin=true&IconThisPC=true&StartFoldersMode=Custom&StartFolderFileExplorer=true&StartFolderSettings=true&WifiMode=Interactive&ExpressSettings=DisableAll&LockKeysMode=Skip&StickyKeysMode=Disabled&ColorMode=Custom&SystemColorTheme=Dark&AppsColorTheme=Dark&AccentColor=%230078d4&WallpaperMode=Script&WallpaperScript=%23+Define+the+path+to+the+default+dark+Windows+11+wallpaper%0D%0A%24wallpaperPath+%3D+%22C%3A%5CWindows%5CWeb%5CWallpaper%5CWindows%5Cimg19.jpg%22%0D%0A%0D%0A%23+Use+COM+object+to+set+the+wallpaper%0D%0A%24code+%3D+%40%22%0D%0Ausing+System.Runtime.InteropServices%3B%0D%0Apublic+class+Wallpaper+%7B%0D%0A++++%5BDllImport%28%22user32.dll%22%2C+SetLastError+%3D+true%29%5D%0D%0A++++public+static+extern+bool+SystemParametersInfo%28int+uAction%2C+int+uParam%2C+string+lpvParam%2C+int+fuWinIni%29%3B%0D%0A%7D%0D%0A%22%40%0D%0A%0D%0AAdd-Type+%24code%0D%0A%5BWallpaper%5D%3A%3ASystemParametersInfo%2820%2C+0%2C+%24wallpaperPath%2C+3%29%0D%0A&LockScreenMode=Default&Remove3DViewer=true&RemoveBingSearch=true&RemoveClipchamp=true&RemoveCopilot=true&RemoveCortana=true&RemoveDevHome=true&RemoveFamily=true&RemoveFeedbackHub=true&RemoveInternetExplorer=true&RemoveMailCalendar=true&RemoveMaps=true&RemoveMediaFeatures=true&RemoveMixedReality=true&RemoveZuneVideo=true&RemoveNews=true&RemoveOneDrive=true&RemoveOneNote=true&RemoveOneSync=true&RemoveOutlook=true&RemovePeople=true&RemovePowerShell2=true&RemovePowerShellISE=true&RemoveRecall=true&RemoveSkype=true&RemoveSolitaire=true&RemoveStepsRecorder=true&RemoveStickyNotes=true&RemoveGetStarted=true&RemoveToDo=true&RemoveVoiceRecorder=true&RemoveWallet=true&RemoveWeather=true&RemoveFaxAndScan=true&RemoveWindowsMediaPlayer=true&RemoveWordPad=true&RemoveXboxApps=true&RemoveYourPhone=true&FirstLogonScript0=Write-Host+%22%5B1%2F4%5D+Installing+Winget...%22+-ForegroundColor+Cyan%0D%0AStart-Process+powershell+-Verb+RunAs+-ArgumentList+%22-ExecutionPolicy+Bypass+-Command+%60%22irm+%27https%3A%2F%2Fraw.githubusercontent.com%2FStensel8%2FDenkoICT%2Frefs%2Fheads%2Fmain%2FScripts%2Fps_Install-Winget.ps1%27+%7C+iex%60%22%22+-Wait+-WindowStyle+Hidden%0D%0A&FirstLogonScriptType0=Ps1&FirstLogonScript1=Write-Host+%22%5B2%2F4%5D+Installing+Drivers...%22+-ForegroundColor+Cyan%0D%0AStart-Process+powershell+-Verb+RunAs+-ArgumentList+%22-ExecutionPolicy+Bypass+-Command+%60%22irm+%27https%3A%2F%2Fraw.githubusercontent.com%2FStensel8%2FDenkoICT%2Frefs%2Fheads%2Fmain%2FScripts%2Fps_Install-Drivers.ps1%27+%7C+iex%60%22%22+-Wait+-WindowStyle+Hidden%0D%0A&FirstLogonScriptType1=Ps1&FirstLogonScript2=Write-Host+%22%5B3%2F4%5D+Installing+Applications...%22+-ForegroundColor+Cyan%0D%0AStart-Process+powershell+-Verb+RunAs+-ArgumentList+%22-ExecutionPolicy+Bypass+-Command+%60%22irm+%27https%3A%2F%2Fraw.githubusercontent.com%2FStensel8%2FDenkoICT%2Frefs%2Fheads%2Fmain%2FScripts%2Fps_Install-Applications.ps1%27+%7C+iex%60%22%22+-Wait+-WindowStyle+Hidden%0D%0A&FirstLogonScriptType2=Ps1&FirstLogonScript3=Write-Host+%22%5B4%2F4%5D+Removing+things+we+didn%27t+ask+for...%22+-ForegroundColor+Cyan%0D%0AStart-Process+powershell+-Verb+RunAs+-ArgumentList+%22-ExecutionPolicy+Bypass+-Command+%60%22irm+%27https%3A%2F%2Fraw.githubusercontent.com%2FStensel8%2FDenkoICT%2Frefs%2Fheads%2Fmain%2FScripts%2Fps_Remove-Bloat.ps1%27+%7C+iex%60%22%22+-Wait+-WindowStyle+Hidden%0D%0A&FirstLogonScriptType3=Ps1&RestartExplorer=true&WdacMode=Skip-->
+	<!--https://schneegans.de/windows/unattend-generator/?LanguageMode=Unattended&UILanguage=nl-NL&Locale=nl-NL&Keyboard=00020409&GeoLocation=176&ProcessorArchitecture=amd64&ProcessorArchitecture=arm64&ComputerNameMode=Script&ComputerNameScript=%23+Get+the+serialnumber+of+the+machine+via+the+CIMinstance+cmdlet%0D%0A%24serial+%3D+%28Get-CimInstance+Win32_BIOS%29.SerialNumber%0D%0A%0D%0A%23+Format+the+serialnumber+to+give+back+the+last+4+characters+prefixed+with+%27PC-%27%0D%0Areturn+%27PC-%7B0%7D%27+-f+%24serial.Substring%28%24serial.Length+-+4%29%0D%0A&CompactOsMode=Never&TimeZoneMode=Explicit&TimeZone=W.+Europe+Standard+Time&PartitionMode=Interactive&DiskAssertionMode=Skip&WindowsEditionMode=Generic&WindowsEdition=pro&InstallFromMode=Automatic&PEMode=Default&UserAccountMode=Unattended&AccountName0=Denkoadmin&AccountDisplayName0=&AccountPassword0=&AccountGroup0=Administrators&AutoLogonMode=Own&PasswordExpirationMode=Unlimited&LockoutMode=Default&HideFiles=Hidden&ShowFileExtensions=true&LaunchToThisPC=true&ShowEndTask=true&TaskbarSearch=Label&TaskbarIconsMode=Default&DisableWidgets=true&DisableBingResults=true&StartTilesMode=Custom&StartTilesXml=%3CLayoutModificationTemplate+xmlns%3Adefaultlayout%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FFullDefaultLayout%22+xmlns%3Astart%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FStartLayout%22+Version%3D%221%22+xmlns%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FLayoutModification%22%3E%0D%0A++%3CLayoutOptions+StartTileGroupCellWidth%3D%226%22+%2F%3E%0D%0A++%3CDefaultLayoutOverride%3E%0D%0A++++%3CStartLayoutCollection%3E%0D%0A++++++%3Cdefaultlayout%3AStartLayout+GroupCellWidth%3D%226%22%3E%0D%0A++++++++%3Cstart%3AGroup+Name%3D%22%22%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%222%22+Row%3D%220%22+DesktopApplicationLinkPath%3D%22%25APPDATA%25%5CMicrosoft%5CWindows%5CStart+Menu%5CPrograms%5CSystem+Tools%5CFile+Explorer.lnk%22+%2F%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%220%22+Row%3D%220%22+DesktopApplicationLinkPath%3D%22%25ALLUSERSPROFILE%25%5CMicrosoft%5CWindows%5CStart+Menu%5CPrograms%5CMicrosoft+Edge.lnk%22+%2F%3E%0D%0A++++++++%3C%2Fstart%3AGroup%3E%0D%0A++++++%3C%2Fdefaultlayout%3AStartLayout%3E%0D%0A++++%3C%2FStartLayoutCollection%3E%0D%0A++%3C%2FDefaultLayoutOverride%3E%0D%0A%3C%2FLayoutModificationTemplate%3E%0D%0A&StartPinsMode=Custom&StartPinsJson=%7B%0D%0A++%22pinnedList%22%3A+%5B%0D%0A++++%7B%0D%0A++++++%22desktopAppLink%22%3A+%22%25APPDATA%25%5C%5CMicrosoft%5C%5CWindows%5C%5CStart+Menu%5C%5CPrograms%5C%5CFile+Explorer.lnk%22%0D%0A++++%7D%2C%0D%0A++++%7B%0D%0A++++++%22desktopAppLink%22%3A+%22%25ALLUSERSPROFILE%25%5C%5CMicrosoft%5C%5CWindows%5C%5CStart+Menu%5C%5CPrograms%5C%5CMicrosoft+Edge.lnk%22%0D%0A++++%7D%0D%0A++%5D%0D%0A%7D%0D%0A&EnableLongPaths=true&DisableLastAccess=true&DisableAppSuggestions=true&HideEdgeFre=true&DisableEdgeStartupBoost=true&DeleteWindowsOld=true&EffectsMode=Default&DesktopIconsMode=Custom&IconRecycleBin=true&IconThisPC=true&StartFoldersMode=Custom&StartFolderFileExplorer=true&StartFolderSettings=true&WifiMode=Interactive&ExpressSettings=DisableAll&LockKeysMode=Skip&StickyKeysMode=Disabled&ColorMode=Custom&SystemColorTheme=Dark&AppsColorTheme=Dark&AccentColor=%230078d4&AccentColorOnStart=true&AccentColorOnBorders=true&EnableTransparency=true&WallpaperMode=Default&LockScreenMode=Default&Remove3DViewer=true&RemoveBingSearch=true&RemoveClipchamp=true&RemoveCopilot=true&RemoveCortana=true&RemoveDevHome=true&RemoveFamily=true&RemoveFeedbackHub=true&RemoveGameAssist=true&RemoveInternetExplorer=true&RemoveMailCalendar=true&RemoveMaps=true&RemoveMediaFeatures=true&RemoveMixedReality=true&RemoveZuneVideo=true&RemoveNews=true&RemoveOneDrive=true&RemoveOneNote=true&RemoveOneSync=true&RemoveOutlook=true&RemovePeople=true&RemovePowerShell2=true&RemovePowerShellISE=true&RemoveRecall=true&RemoveSkype=true&RemoveSolitaire=true&RemoveStepsRecorder=true&RemoveStickyNotes=true&RemoveGetStarted=true&RemoveToDo=true&RemoveVoiceRecorder=true&RemoveWallet=true&RemoveWeather=true&RemoveFaxAndScan=true&RemoveWindowsMediaPlayer=true&RemoveWordPad=true&RemoveXboxApps=true&RemoveYourPhone=true&FirstLogonScript0=Write-Host+%22Customizing+your+device.+Please+wait...%22+-ForegroundColor+Cyan%0D%0AStart-Process+powershell+-Verb+RunAs+-ArgumentList+%22-ExecutionPolicy+Bypass+-Command+%60%22irm+%27https%3A%2F%2Fraw.githubusercontent.com%2FStensel8%2FDenkoICT%2Frefs%2Fheads%2Fmain%2FScripts%2Fps_Deploy-Device.ps1%27+%7C+iex%60%22%22+-Wait%0D%0A&FirstLogonScriptType0=Ps1&RestartExplorer=true&WdacMode=Skip-->
 	<settings pass="offlineServicing"></settings>
 	<settings pass="windowsPE">
 		<component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
@@ -253,6 +253,7 @@ $selectors = @(
 	'Microsoft.Windows.DevHome';
 	'MicrosoftCorporationII.MicrosoftFamily';
 	'Microsoft.WindowsFeedbackHub';
+	'Microsoft.Edge.GameAssist';
 	'Microsoft.Getstarted';
 	'microsoft.windowscommunicationsapps';
 	'Microsoft.WindowsMaps';
@@ -428,9 +429,6 @@ $json = '{
     },
     {
       "desktopAppLink": "%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\Microsoft Edge.lnk"
-    },
-    {
-      "desktopAppLink": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\System Tools\\Immersive Control Panel.lnk"
     }
   ]
 }';
@@ -450,7 +448,6 @@ Set-ItemProperty -LiteralPath $key -Name 'ConfigureStartPins' -Value $json -Type
 				&lt;start:Group Name=""&gt;
 					&lt;start:DesktopApplicationTile Size="2x2" Column="2" Row="0" DesktopApplicationLinkPath="%APPDATA%\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk" /&gt;
 					&lt;start:DesktopApplicationTile Size="2x2" Column="0" Row="0" DesktopApplicationLinkPath="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Microsoft Edge.lnk" /&gt;
-					&lt;start:DesktopApplicationTile Size="2x2" Column="4" Row="0" DesktopApplicationLinkPath="%APPDATA%\Microsoft\Windows\Start Menu\Programs\System Tools\Immersive Control Panel.lnk" /&gt;
 				&lt;/start:Group&gt;
 			&lt;/defaultlayout:StartLayout&gt;
 		&lt;/StartLayoutCollection&gt;
@@ -460,8 +457,8 @@ Set-ItemProperty -LiteralPath $key -Name 'ConfigureStartPins' -Value $json -Type
 		<File path="C:\Windows\Setup\Scripts\SetColorTheme.ps1">
 $lightThemeSystem = 0;
 $lightThemeApps = 0;
-$accentColorOnStart = 0;
-$enableTransparency = 0;
+$accentColorOnStart = 1;
+$enableTransparency = 1;
 $htmlAccentColor = '#0078D4';
 &amp; {
 	$params = @{
@@ -510,98 +507,9 @@ $htmlAccentColor = '#0078D4';
 	Set-ItemProperty @params -Value $palette -Type 'Binary' -Force;
 };
 		</File>
-		<File path="C:\Windows\Setup\Scripts\GetWallpaper.ps1">
-# Define the path to the default dark Windows 11 wallpaper
-$wallpaperPath = "C:\Windows\Web\Wallpaper\Windows\img19.jpg"
-
-# Use COM object to set the wallpaper
-$code = @"
-using System.Runtime.InteropServices;
-public class Wallpaper {
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
-}
-"@
-
-Add-Type $code
-[Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
-		</File>
-		<File path="C:\Windows\Setup\Scripts\SetWallpaper.ps1">
-Add-Type -TypeDefinition '
-	using System.Drawing;
-	using System.Runtime.InteropServices;
-	
-	public static class WallpaperSetter {
-		[DllImport("user32.dll")]
-		private static extern bool SetSysColors(
-			int cElements, 
-			int[] lpaElements,
-			int[] lpaRgbValues
-		);
-
-		[DllImport("user32.dll")]
-		private static extern bool SystemParametersInfo(
-			uint uiAction,
-			uint uiParam,
-			string pvParam,
-			uint fWinIni
-		);
-
-		public static void SetDesktopBackground(Color color) {
-			SystemParametersInfo(20, 0, "", 0);
-			SetSysColors(1, new int[] { 1 }, new int[] { ColorTranslator.ToWin32(color) });
-		}
-
-		public static void SetDesktopImage(string file) {
-			SystemParametersInfo(20, 0, file, 0);
-		}
-	}
-' -ReferencedAssemblies 'System.Drawing';
-
-function Set-WallpaperColor {
-	param(
-		[string]
-		$HtmlColor
-	);
-
-	$color = [System.Drawing.ColorTranslator]::FromHtml( $HtmlColor );
-	[WallpaperSetter]::SetDesktopBackground( $color );
-	Set-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers' -Name 'BackgroundType' -Type 'DWord' -Value 1 -Force;
-	Set-ItemProperty -Path 'Registry::HKCU\Control Panel\Desktop' -Name 'WallPaper' -Type 'String' -Value '' -Force;
-	Set-ItemProperty -Path 'Registry::HKCU\Control Panel\Colors' -Name 'Background' -Type 'String' -Value "$($color.R) $($color.G) $($color.B)" -Force;
-}
-
-function Set-WallpaperImage {
-	param(
-		[string]
-		$LiteralPath
-	);
-
-	if( $LiteralPath | Test-Path ) {
-		[WallpaperSetter]::SetDesktopImage( $LiteralPath );
-		Set-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers' -Name 'BackgroundType' -Type 'DWord' -Value 0 -Force;
-		Set-ItemProperty -Path 'Registry::HKCU\Control Panel\Desktop' -Name 'WallPaper' -Type 'String' -Value $LiteralPath -Force;
-	} else {
-		"Cannot use '$LiteralPath' as a desktop wallpaper because that file does not exist.";
-	}
-}
-Set-WallpaperImage -LiteralPath 'C:\Windows\Setup\Scripts\Wallpaper';
-		</File>
 		<File path="C:\Windows\Setup\Scripts\unattend-01.ps1">
-Write-Host "[1/4] Installing Winget..." -ForegroundColor Cyan
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Winget.ps1' | iex`"" -Wait -WindowStyle Hidden
-		</File>
-		<File path="C:\Windows\Setup\Scripts\unattend-02.ps1">
-Write-Host "[2/4] Installing Drivers..." -ForegroundColor Cyan
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Drivers.ps1' | iex`"" -Wait -WindowStyle Hidden
-		</File>
-		<File path="C:\Windows\Setup\Scripts\unattend-03.ps1">
-Write-Host "[3/4] Installing Applications..." -ForegroundColor Cyan
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Install-Applications.ps1' | iex`"" -Wait -WindowStyle Hidden
-		</File>
-		<File path="C:\Windows\Setup\Scripts\unattend-04.ps1">
-Write-Host "[4/4] Removing things we didn't ask for..." -ForegroundColor Cyan
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Remove-Bloat.ps1' | iex`"" -Wait -WindowStyle Hidden
+Write-Host "Customizing your device. Please wait..." -ForegroundColor Cyan
+Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Deploy-Device.ps1' | iex`"" -Wait
 		</File>
 		<File path="C:\Windows\Setup\Scripts\Specialize.ps1">
 $scripts = @(
@@ -655,14 +563,6 @@ $scripts = @(
 	};
 	{
 		reg.exe add "HKU\.DEFAULT\Control Panel\Accessibility\StickyKeys" /v Flags /t REG_SZ /d 10 /f;
-	};
-	{
-		try {
-		  $bytes = Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\GetWallpaper.ps1' -Raw | Invoke-Expression;
-		  [System.IO.File]::WriteAllBytes( 'C:\Windows\Setup\Scripts\Wallpaper', $bytes );
-		} catch {
-		  $_;
-		}
 	};
 );
 
@@ -734,9 +634,6 @@ $scripts = @(
 	};
 	{
 		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\SetColorTheme.ps1' -Raw | Invoke-Expression;
-	};
-	{
-		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\SetWallpaper.ps1' -Raw | Invoke-Expression;
 	};
 	{
 		Get-Process -Name 'explorer' -ErrorAction 'SilentlyContinue' | Where-Object -FilterScript {
@@ -819,7 +716,7 @@ $scripts = @(
 		reg.exe add "HKU\DefaultUser\Control Panel\Accessibility\StickyKeys" /v Flags /t REG_SZ /d 10 /f;
 	};
 	{
-		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\DWM" /v ColorPrevalence /t REG_DWORD /d 0 /f;
+		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\DWM" /v ColorPrevalence /t REG_DWORD /d 1 /f;
 	};
 	{
 		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v "UnattendedSetup" /t REG_SZ /d "powershell.exe -WindowStyle Normal -NoProfile -Command \""Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\UserOnce.ps1' -Raw | Invoke-Expression;\""" /f;
@@ -858,15 +755,6 @@ $scripts = @(
 	};
 	{
 		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-01.ps1' -Raw | Invoke-Expression;
-	};
-	{
-		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-02.ps1' -Raw | Invoke-Expression;
-	};
-	{
-		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-03.ps1' -Raw | Invoke-Expression;
-	};
-	{
-		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-04.ps1' -Raw | Invoke-Expression;
 	};
 );
 

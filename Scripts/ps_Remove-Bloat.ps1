@@ -71,7 +71,7 @@ function Remove-AppxByPattern {
     )
 
     Log "Searching installed packages matching: $Pattern"
-    $matchedPackages = Get-AppxPackage -AllUsers -Name $Pattern
+    $matchedPackages = Get-AppxPackage -AllUsers | Where-Object { $_.Name -like $Pattern -or $_.PackageFullName -like $Pattern }
 
     if (-not $matchedPackages) {
         Log "No installed packages found for pattern: $Pattern"
@@ -90,7 +90,7 @@ function Remove-AppxByPattern {
                 Log "Successfully removed package: $packageName"
                 $Succeeded.Add("Removed: $packageName") | Out-Null
             } catch {
-                Log "Failed to remove package $packageName: $($_.Exception.Message)"
+                Log "Failed to remove package $($packageName): $($_.Exception.Message)"
                 $Failed.Add("Failed to remove: $packageName") | Out-Null
             }
         }
@@ -125,7 +125,7 @@ function Remove-ProvisionedByPattern {
                 Log "Successfully removed provisioned package: $packageName"
                 $Succeeded.Add("Removed provisioned: $packageName") | Out-Null
             } catch {
-                Log "Failed to remove provisioned package $packageName: $($_.Exception.Message)"
+                Log "Failed to remove provisioned package $($packageName): $($_.Exception.Message)"
                 $Failed.Add("Failed to remove provisioned: $packageName") | Out-Null
             }
         }
@@ -135,8 +135,8 @@ function Remove-ProvisionedByPattern {
 # --- Main Execution ---
 
 # Arrays to hold the results
-$succeededRemovals = [System.Collections.ArrayList]@()
-$failedRemovals = [System.Collections.ArrayList]@()
+$succeededRemovals = [System.Collections.ArrayList]::new()
+$failedRemovals = [System.Collections.ArrayList]::new()
 
 # Iterate over the entries and apply both provisioned and installed removals
 foreach ($appName in $AppsToRemove) {
@@ -168,11 +168,40 @@ try {
     if ($WhatIf) {
         Log "WhatIf: Would set registry value $registryName to $registryValue at $registryPath"
     } else {
-        Set-ItemProperty -Path $registryPath -Name $registryName -Value $registryValue -Type DWord
+        New-ItemProperty -Path $registryPath -Name $registryName -Value $registryValue -PropertyType DWord -Force | Out-Null
         Log "Successfully disabled Windows Consumer Features - bloatware apps like TikTok and WhatsApp will not be automatically installed"
     }
 } catch {
     Log "Failed to disable Windows Consumer Features: $($_.Exception.Message)"
+}
+
+# --- Disable Start Menu Suggestions ---
+Log "Disabling Start Menu suggestions (tips, shortcuts, new apps, and more)..."
+
+$startMenuRegistryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+$startMenuRegistryName = "Start_IrisRecommendations"
+$startMenuRegistryValue = 0
+
+try {
+    # Create the registry path if it doesn't exist
+    if (-not (Test-Path $startMenuRegistryPath)) {
+        if ($WhatIf) {
+            Log "WhatIf: Would create registry path: $startMenuRegistryPath"
+        } else {
+            New-Item -Path $startMenuRegistryPath -Force | Out-Null
+            Log "Created registry path: $startMenuRegistryPath"
+        }
+    }
+    
+    # Set the registry value
+    if ($WhatIf) {
+        Log "WhatIf: Would set registry value $startMenuRegistryName to $startMenuRegistryValue at $startMenuRegistryPath"
+    } else {
+        New-ItemProperty -Path $startMenuRegistryPath -Name $startMenuRegistryName -Value $startMenuRegistryValue -PropertyType DWord -Force | Out-Null
+        Log "Successfully disabled Start Menu suggestions - recommended tips, shortcuts, and new apps will no longer appear"
+    }
+} catch {
+    Log "Failed to disable Start Menu suggestions: $($_.Exception.Message)"
 }
 
 # --- Summary ---
