@@ -1,10 +1,16 @@
 # Denko ICT Modern Endpoint Deployment Toolkit
 
+<p align="right">
+	<a href="README.nl.md">
+		<img src="https://img.shields.io/badge/Switch%20to-Dutch-blue?style=for-the-badge" alt="Switch to Dutch" />
+	</a>
+</p>
+
 ## Why this project exists
 This repository is the centerpiece of my internship at Denko ICT. I joined a team where many device deployments and configuration tasks were still performed manually. I got the opportunity to re-evaluate these processes. By building a more modern automation toolkit, I want to prove that Windows 11 Pro devices can be deployed, secured, and made productive faster and with fewer errors, without relying on legacy tooling.
 
 ## What this repository delivers
-- Opinionated PowerShell 7 automation that aligns with current Microsoft endpoint management guidance.
+- A PowerShell 7 automation that aligns with current Microsoft endpoint management guidance.
 - Zero reliance on deprecated stacks such as Microsoft MDT, classic batch/CMD scripts, VBScript, PowerShell 2.0, or WMIC.
 - Integrated vendor tooling for Dell (Dell Command | Update CLI) and HP (HP Image Assistant & HP Client Management Script Library (HP CMSL)) so devices install patches out of the box via Windows Terminal.
 - Reusable scripts for application deployment, driver management, device preparation, and general maintenance.
