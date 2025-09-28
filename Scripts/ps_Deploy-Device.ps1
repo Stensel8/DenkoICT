@@ -206,6 +206,24 @@ function Resolve-LocalScript {
     return $scriptPath
 }
 
+function Set-WinGetSessionDefaults {
+    [CmdletBinding()]
+    param()
+
+    $wingetVariables = @{
+        Debug                  = $false
+        ForceClose             = $false
+        Force                  = $false
+        AlternateInstallMethod = $false
+    }
+
+    foreach ($variable in $wingetVariables.GetEnumerator()) {
+        if (-not (Get-Variable -Name $variable.Key -Scope Global -ErrorAction SilentlyContinue)) {
+            New-Variable -Name $variable.Key -Value $variable.Value -Scope Global | Out-Null
+        }
+    }
+}
+
 function Invoke-DeploymentStep {
     [CmdletBinding()]
     param(
@@ -215,7 +233,10 @@ function Invoke-DeploymentStep {
 
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
-        [string]$DisplayName
+        [string]$DisplayName,
+
+        [Parameter()]
+        [hashtable]$ScriptParameters
     )
 
     Write-Log -Message "Starting: ${DisplayName}" -Level 'INFO'
@@ -227,7 +248,13 @@ function Invoke-DeploymentStep {
             Get-RemoteScript -ScriptName $ScriptName
         }
 
-        & $scriptPath
+        Set-Variable -Name 'LASTEXITCODE' -Scope Global -Value 0 -Force
+
+        if ($ScriptParameters -and $ScriptParameters.Count -gt 0) {
+            & $scriptPath @ScriptParameters
+        } else {
+            & $scriptPath
+        }
 
         if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
             Write-Log -Message "Script returned exit code: $LASTEXITCODE" -Level 'WARN'
@@ -258,8 +285,46 @@ function Invoke-Deployment {
         Failed  = 0
     }
 
+    Set-WinGetSessionDefaults
+
+    $wingetSucceeded = $false
+
     foreach ($step in $deploymentSteps) {
-        if (Invoke-DeploymentStep -ScriptName $step.Script -DisplayName $step.Name) {
+        $parameters = if ($step.ContainsKey('Parameters')) { $step.Parameters } else { $null }
+
+        if ($step.Script -eq 'ps_Install-Winget.ps1') {
+            $wingetSucceeded = Invoke-DeploymentStep -ScriptName $step.Script -DisplayName $step.Name -ScriptParameters $parameters
+
+            if (-not $wingetSucceeded) {
+                Write-Log -Message 'WinGet installation failed. Retrying with alternate install method...' -Level 'WARN'
+                $alternateVariable = Get-Variable -Name 'AlternateInstallMethod' -Scope Global -ErrorAction SilentlyContinue
+                $originalAlternate = if ($null -ne $alternateVariable) { $alternateVariable.Value } else { $false }
+                try {
+                    Set-Variable -Name 'AlternateInstallMethod' -Scope Global -Value $true -Force
+                    $wingetSucceeded = Invoke-DeploymentStep -ScriptName $step.Script -DisplayName 'WinGet Installation (Alternate Method)' -ScriptParameters $parameters
+                } finally {
+                    $restoreValue = if ($null -ne $originalAlternate) { $originalAlternate } else { $false }
+                    Set-Variable -Name 'AlternateInstallMethod' -Scope Global -Value $restoreValue -Force
+                }
+            }
+
+            if ($wingetSucceeded) {
+                $result.Success++
+            } else {
+                $result.Failed++
+                Write-Log -Message 'Continuing despite error...' -Level 'WARN'
+            }
+
+            continue
+        }
+
+        if ($step.Script -eq 'ps_Install-Applications.ps1' -and -not $wingetSucceeded) {
+            Write-Log -Message 'Skipping Application Installation because WinGet is unavailable.' -Level 'WARN'
+            $result.Failed++
+            continue
+        }
+
+        if (Invoke-DeploymentStep -ScriptName $step.Script -DisplayName $step.Name -ScriptParameters $parameters) {
             $result.Success++
         } else {
             $result.Failed++

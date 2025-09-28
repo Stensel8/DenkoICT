@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.1.1
+.VERSION 1.2.0
 
 .AUTHOR Sten Tijhuis
 
@@ -14,6 +14,7 @@
 [Version 1.0.0] - Initial Release. Removes bloatware apps from Windows.
 [Version 1.1.0] - Added registry modifications to prevent reinstallation of bloatware.
 [Version 1.1.1] - Added more known bloatware apps to the removal list.
+[Version 1.2.0] - Hardened Start Menu recommendation suppression using additional policy keys.
 #>
 
 <#
@@ -53,7 +54,7 @@
     Console output with removal summary and detailed log file.
 
 .NOTES
-    Version      : 1.1.1
+    Version      : 1.2.0
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     
@@ -68,7 +69,7 @@
     Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
-[CmdletBinding(SupportsShouldProcess)]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)]
     [switch]$WhatIf,
@@ -77,12 +78,49 @@ param(
     [string]$LogPath = "$env:TEMP\DenkoICT-Debloat-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 )
 
+# --- Elevate if necessary ---
+$currentIdentity  = [Security.Principal.WindowsIdentity]::GetCurrent()
+$currentPrincipal = [Security.Principal.WindowsPrincipal]::new($currentIdentity)
+$isAdmin          = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+    if ($WhatIf) {
+        Write-Host "Running in WhatIf mode without elevation. Some operations may be simulated or skipped due to limited permissions." -ForegroundColor Yellow
+    } else {
+        Write-Host "Elevation required. Restarting script with administrative privileges..." -ForegroundColor Yellow
+
+        try {
+            $hostPath     = (Get-Process -Id $PID -ErrorAction Stop).Path
+            $argumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+
+            foreach ($param in $PSBoundParameters.GetEnumerator()) {
+                switch ($param.Key) {
+                    'WhatIf' { if ($param.Value) { $argumentList += '-WhatIf' } }
+                    'LogPath' {
+                        $argumentList += '-LogPath'
+                        $argumentList += $param.Value
+                    }
+                }
+            }
+
+            if ($MyInvocation.UnboundArguments) {
+                $argumentList += $MyInvocation.UnboundArguments
+            }
+
+            Start-Process -FilePath $hostPath -ArgumentList $argumentList -Verb RunAs | Out-Null
+        } catch {
+            Write-Host "Failed to restart with elevated privileges: $($_.Exception.Message)" -ForegroundColor Red
+        }
+
+        exit
+    }
+}
+
 # List of unwanted apps to remove. Wildcards (*) are supported.
 $AppsToRemove = @(
     # Communication and Social
     "Microsoft.SkypeApp",
     "Microsoft.YourPhone",
-    "MicrosoftTeams", # This is the new personal Teams app in Windows 11
     "Microsoft.People",
 
     # Media and Entertainment
@@ -257,6 +295,24 @@ $registryConfigs = @(
         Name = "Start_IrisRecommendations"
         Value = 0
         Description = "Disables Start Menu suggestions"
+    },
+    @{
+        Path = "HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start"
+        Name = "HideRecommendedSection"
+        Value = 1
+        Description = "Hides Start Menu recommended section via PolicyManager"
+    },
+    @{
+        Path = "HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Education"
+        Name = "IsEducationEnvironment"
+        Value = 1
+        Description = "Signals education environment to suppress recommendations"
+    },
+    @{
+        Path = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
+        Name = "HideRecommendedSection"
+        Value = 1
+        Description = "Hides Start Menu recommended section via Explorer policy"
     }
 )
 
