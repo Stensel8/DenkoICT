@@ -9,6 +9,8 @@
 ## Waarom dit project bestaat
 Deze repository vormt het hoofdonderdeel van mijn stage bij Denko ICT. Ik kreeg de taak om het automatiseringsproces en het apparaat uitrol proces te herzien. Tijdens deze evaluatie zag ik mogelijkheden om handmatige configuratietaken verder te automatiseren met moderne tooling. Met deze eigentijdse automatiseringstoolkit wil ik aantonen dat Windows 11 Pro-apparaten nog sneller, veiliger en consistenter inzetbaar zijn, door gebruik te maken van de nieuwste beschikbare technologieën.
 
+![Expected Result](Docs/Expected_Result.png)
+
 ## Wat deze repository oplevert
 - Een PowerShell 7-aanpak die aansluit op de actuele Microsoft-richtlijnen voor endpointbeheer.
 - Geen afhankelijkheid van verouderde technologieën zoals Microsoft MDT, klassieke batch/CMD-scripts, VBScript, PowerShell 2.0 of WMIC.

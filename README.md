@@ -9,6 +9,8 @@
 ## Why this project exists
 This repository is the centerpiece of my internship at Denko ICT. I joined a team where many device deployments and configuration tasks were still performed manually. I got the opportunity to re-evaluate these processes. By building a more modern automation toolkit, I want to prove that Windows 11 Pro devices can be deployed, secured, and made productive faster and with fewer errors, without relying on legacy tooling.
 
+![Expected Result](Docs/Expected_Result.png)
+
 ## What this repository delivers
 - A PowerShell 7 automation that aligns with current Microsoft endpoint management guidance.
 - Zero reliance on deprecated stacks such as Microsoft MDT, classic batch/CMD scripts, VBScript, PowerShell 2.0, or WMIC.
