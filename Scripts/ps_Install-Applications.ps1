@@ -99,7 +99,7 @@
 
 #requires -Version 5.1
 
-[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
     [Parameter(Mandatory = $false)]
     [string[]]$Applications = @(
@@ -145,7 +145,7 @@ $script:SystemArch = $env:PROCESSOR_ARCHITECTURE
 $script:IsARM64 = $SystemArch -eq "ARM64"
 
 # Common module check
-$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'DenkoICT.Common.ps1'
+$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'ps_Invoke-AdminToolkit.ps1'
 if (Test-Path -Path $commonModule) {
     . $commonModule
     $script:CommonModuleAvailable = $true
@@ -654,7 +654,20 @@ if ($IsARM64) {
     Write-Log "Adjusted applications for ARM64 architecture" -Level 'Info'
 }
 
-$shouldInstall = $PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Install applications via WinGet')
+$confirmParameterSupplied = $PSBoundParameters.ContainsKey('Confirm')
+$originalConfirmPreference = $ConfirmPreference
+
+if (-not $confirmParameterSupplied) {
+    $ConfirmPreference = 'None'
+}
+
+try {
+    $shouldInstall = $PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Install applications via WinGet')
+} finally {
+    if (-not $confirmParameterSupplied) {
+        $ConfirmPreference = $originalConfirmPreference
+    }
+}
 
 if (-not $shouldInstall) {
     Write-Log 'WhatIf: Simulation mode - no applications will be installed.' -Level 'Warning'
