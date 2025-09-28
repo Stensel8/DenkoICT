@@ -31,7 +31,7 @@
 .PARAMETER Username
   Local administrator account name. Default: DenkoAdmin.
 .PARAMETER Password
-  SecureString password for the administrator account. Defaults to a demo password when omitted.
+  SecureString password for the administrator account. Required when creating a new account or resetting credentials.
 .PARAMETER ResetExistingPassword
   Resets the password for an existing Denko administrator account when specified.
 .PARAMETER SetIntuneSuccess
@@ -51,7 +51,6 @@
 .NOTES
   Version:        3.3.1
   Author:         Sten Tijhuis (Stensel8)
-  Original Work:  Jeffery Field, Denko ICT Team
   Requires:       Windows PowerShell 5.1 or newer, administrative privileges for most operations
 #>
 
@@ -304,7 +303,7 @@ function Set-DenkoAdmin {
   .PARAMETER Username
     Username for the local administrator. Default: DenkoAdmin.
   .PARAMETER Password
-    SecureString password for the administrator.
+    Optional SecureString password for the administrator.
   .PARAMETER ResetExistingPassword
     When provided, resets the password for the existing account.
   #>
@@ -322,23 +321,33 @@ function Set-DenkoAdmin {
   )
 
   try {
-    if (-not $Password) {
-      Write-Log -Message 'WARNING: Using default password. This should only be used for testing!' -Level Warning
-      $Password = ConvertTo-SecureString 'Secure@12345' -AsPlainText -Force
-    }
-
     Assert-AdminRights
 
     Write-Log -Message "Checking if user '$Username' exists." -Level Verbose
     $existingUser = Get-LocalUser -Name $Username -ErrorAction SilentlyContinue
 
-    if ($existingUser) {
+    $accountExists = [bool]$existingUser
+    $passwordSupplied = $PSBoundParameters.ContainsKey('Password') -and $Password
+
+    if (-not $accountExists -and -not $passwordSupplied) {
+      Write-Log -Message "No password supplied; '$Username' will be created without credentials. Ensure this aligns with your security policy." -Level Warning
+    }
+
+    if ($accountExists -and $Password -and -not $ResetExistingPassword.IsPresent) {
+      Write-Log -Message 'Password parameter supplied without requesting a reset; ignoring provided value.' -Level Verbose
+    }
+
+    if ($accountExists) {
       Write-Log -Message "User '$Username' already exists." -Level Warning
 
       if ($ResetExistingPassword) {
-        if ($PSCmdlet.ShouldProcess("Local user '$Username'", 'Reset local administrator password')) {
-          Set-LocalUser -Name $Username -Password $Password
-          Write-Log -Message "Password reset for user '$Username'." -Level Success
+        if ($passwordSupplied) {
+          if ($PSCmdlet.ShouldProcess("Local user '$Username'", 'Reset local administrator password')) {
+            Set-LocalUser -Name $Username -Password $Password
+            Write-Log -Message "Password reset for user '$Username'." -Level Success
+          }
+        } else {
+          Write-Log -Message 'ResetExistingPassword specified without a new password; skipping password reset.' -Level Warning
         }
       } else {
         Write-Log -Message 'ResetExistingPassword not specified; leaving existing credentials unchanged.' -Level Verbose
@@ -349,12 +358,17 @@ function Set-DenkoAdmin {
       if ($PSCmdlet.ShouldProcess("Local user '$Username'", 'Create local administrator account')) {
         $userParams = @{
           Name                     = $Username
-          Password                 = $Password
           FullName                 = 'Denko ICT Administrator'
           Description              = 'Administrative account for Denko ICT management'
           PasswordNeverExpires     = $true
           AccountNeverExpires      = $true
           UserMayNotChangePassword = $false
+        }
+
+        if ($passwordSupplied) {
+          $userParams['Password'] = $Password
+        } else {
+          $userParams['NoPassword'] = $true
         }
 
         New-LocalUser @userParams
