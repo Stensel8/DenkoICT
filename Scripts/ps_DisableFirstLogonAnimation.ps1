@@ -46,7 +46,7 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'DenkoICT.Common.ps1'
+$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'ps_Invoke-AdminToolkit.ps1'
 if (-not (Test-Path -Path $commonModule)) {
     throw "Unable to locate shared helper module at $commonModule"
 }
