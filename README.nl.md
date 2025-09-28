@@ -1,4 +1,4 @@
-# Denko ICT Moderne Endpoint Deployment Toolkit
+# Denko ICT Moderne Endpoint Deployment
 
 <p align="right">
 	<a href="README.md">
