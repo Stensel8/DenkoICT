@@ -82,9 +82,11 @@ function Assert-Administrator {
 function Initialize-Directories {
     if (-not (Test-Path $script:LogDirectory)) {
         New-Item -Path $script:LogDirectory -ItemType Directory -Force | Out-Null
+        Write-Log "Created log directory: $script:LogDirectory" "VERBOSE"
     }
     if (-not (Test-Path $script:DownloadDirectory)) {
         New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
+        Write-Log "Created download directory: $script:DownloadDirectory" "VERBOSE"
     }
 }
 
@@ -103,6 +105,14 @@ function Initialize-Logging {
 
 function Get-RemoteScript {
     param([string]$ScriptUrl,[string]$SavePath)
+    
+    # Ensure the directory exists
+    $directory = Split-Path $SavePath -Parent
+    if (-not (Test-Path $directory)) {
+        New-Item -Path $directory -ItemType Directory -Force | Out-Null
+        Write-Log "Created directory: $directory" "VERBOSE"
+    }
+    
     try {
         Import-Module BitsTransfer -ErrorAction SilentlyContinue
         Start-BitsTransfer -Source $ScriptUrl -Destination $SavePath -ErrorAction Stop
