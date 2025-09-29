@@ -6,13 +6,7 @@
 
 .COMPANYNAME Denko ICT
 
-.TAGS PowerShell Windows Deploymenfunction Get-Script {
-    param([string]$ScriptName)
-    $url = "$ScriptBaseUrl/$ScriptName"
-    $localPath = Join-Path $script:DownloadDirectory $ScriptName
-    Get-RemoteScript -ScriptUrl $url -SavePath $localPath
-    return $localPath
-}ation Logging
+.TAGS PowerShell Windows Deployment Logging
 
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
@@ -125,11 +119,11 @@ function Get-RemoteScript {
     }
 }
 
-function Get-RemoteScript {
+function Get-Script {
     param([string]$ScriptName)
     $url = "$ScriptBaseUrl/$ScriptName"
     $localPath = Join-Path $script:DownloadDirectory $ScriptName
-    Download-RemoteScript -ScriptUrl $url -SavePath $localPath
+    Get-RemoteScript -ScriptUrl $url -SavePath $localPath
     return $localPath
 }
 
@@ -159,7 +153,7 @@ function Invoke-DeploymentStep {
     param([string]$ScriptName,[string]$DisplayName,[hashtable]$ScriptParameters)
     Write-Log "Start: ${DisplayName}" "INFO"
     try {
-        $scriptPath = Get-RemoteScript -ScriptName $ScriptName
+        $scriptPath = Get-Script -ScriptName $ScriptName
         Set-Variable -Name 'LASTEXITCODE' -Scope Global -Value 0 -Force
         if ($ScriptParameters -and $ScriptParameters.Count -gt 0) {
             & $scriptPath @ScriptParameters
@@ -266,6 +260,7 @@ function Copy-ExternalLogs {
 
 try {
     Assert-Administrator
+    Initialize-Directories
     Initialize-Logging
     Import-CustomFunctions
     Write-Log "=== Denko ICT Device Deployment Started ===" "INFO"
