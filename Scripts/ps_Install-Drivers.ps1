@@ -34,7 +34,7 @@
     - HP Image Assistant as primary method for HP systems
     - HP CMSL as fallback when HPIA is unavailable
     - Dell Command Update for Dell systems
-    - Comprehensive logging to %ProgramData%\DenkoICT\Logs
+    - Comprehensive logging to C:\DenkoICT\Logs
     - WinGet integration for tool installation
 
 .PARAMETER SkipDell
@@ -57,7 +57,7 @@
     Installs up to 20 HP drivers if HP system is detected.
 
 .OUTPUTS
-    Log files in %ProgramData%\DenkoICT\Logs\Drivers\
+    Log files in C:\DenkoICT\Logs\Drivers\
 
 .NOTES
     Version      : 1.0.3
@@ -98,7 +98,7 @@ Write-Host "Starting Driver Update (Post-OOBE)..." -ForegroundColor Cyan
 Write-Host "Performing pre-flight checks..." -ForegroundColor Gray
 
 # Prepare log directories for tool output
-$globalLogRoot = Join-Path -Path $env:ProgramData -ChildPath 'DenkoICT\Logs'
+$globalLogRoot = 'C:\DenkoICT\Logs'
 $driverLogRoot = Join-Path -Path $globalLogRoot -ChildPath 'Drivers'
 $hpLogRoot = Join-Path -Path $driverLogRoot -ChildPath 'HP'
 $dellLogRoot = Join-Path -Path $driverLogRoot -ChildPath 'Dell'
@@ -204,6 +204,232 @@ function Invoke-WithRetry {
             }
         }
     }
+}
+
+# Determine if we are running with administrative privileges
+function Test-IsAdministrator {
+    try {
+        $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {
+        Write-Warning "Unable to determine administrative privileges: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# Resolve the preferred module installation path based on privileges
+function Get-PreferredModuleRoot {
+    if (Test-IsAdministrator) {
+        return Join-Path -Path ${env:ProgramFiles} -ChildPath 'WindowsPowerShell\Modules'
+    } else {
+        $userModuleRoot = Join-Path -Path ([Environment]::GetFolderPath('MyDocuments')) -ChildPath 'WindowsPowerShell\Modules'
+        if (-not (Test-Path -Path $userModuleRoot)) {
+            New-Item -Path $userModuleRoot -ItemType Directory -Force | Out-Null
+        }
+        return $userModuleRoot
+    }
+}
+
+# Download helper with multiple strategies (Invoke-WebRequest first, then BITS)
+function Invoke-WebDownload {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    Write-Host "  Downloading: $Url" -ForegroundColor Gray
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -ErrorAction Stop
+        return $true
+    } catch {
+        Write-Warning "  Download via Invoke-WebRequest failed: $($_.Exception.Message)"
+        try {
+            if (Get-Command -Name Start-BitsTransfer -ErrorAction SilentlyContinue) {
+                Start-BitsTransfer -Source $Url -Destination $Destination -ErrorAction Stop
+                return $true
+            } else {
+                Write-Warning "  BITS transfer unavailable on this system"
+            }
+        } catch {
+            Write-Warning "  Download via BITS failed: $($_.Exception.Message)"
+        }
+    }
+
+    return $false
+}
+
+# Install HP CMSL by downloading the official package and copying modules/MSI
+function Install-HPCMSLPackage {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$DownloadUrls,
+        [string]$WorkingFolder = (Join-Path -Path $env:TEMP -ChildPath 'DenkoICT-HPCMSL')
+    )
+
+    try {
+        if (Test-Path -Path $WorkingFolder) {
+            Remove-Item -Path $WorkingFolder -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        New-Item -Path $WorkingFolder -ItemType Directory -Force | Out-Null
+
+        $packagePath = Join-Path -Path $WorkingFolder -ChildPath 'HPCMSL.zip'
+        $downloaded = $false
+
+        foreach ($url in $DownloadUrls) {
+            if (Invoke-WebDownload -Url $url -Destination $packagePath) {
+                $downloaded = $true
+                break
+            }
+        }
+
+        if (-not $downloaded -or -not (Test-Path -Path $packagePath)) {
+            Write-Warning "  Failed to download HP CMSL package from all provided sources"
+            return $false
+        }
+
+        $extractPath = Join-Path -Path $WorkingFolder -ChildPath 'Extracted'
+        Expand-Archive -Path $packagePath -DestinationPath $extractPath -Force -ErrorAction Stop
+
+        $successfulInstall = $false
+
+        # Prefer MSI-based deployment when available
+        $msiCandidate = Get-ChildItem -Path $extractPath -Filter '*.msi' -Recurse -ErrorAction SilentlyContinue | Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1
+        if ($msiCandidate) {
+            Write-Host "  Installing HP CMSL via MSI package ($($msiCandidate.Name))" -ForegroundColor Gray
+            try {
+                $msiArgs = "/i `"$($msiCandidate.FullName)`" /qn /norestart"
+                $msiProcess = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -PassThru -Wait -WindowStyle Hidden
+                if ($msiProcess.ExitCode -in @(0, 3010, 1641)) {
+                    Write-Host "  MSI installation reported success (exit code $($msiProcess.ExitCode))" -ForegroundColor Gray
+                    $successfulInstall = $true
+                } else {
+                    Write-Warning "  MSI installer returned exit code $($msiProcess.ExitCode)"
+                }
+            } catch {
+                Write-Warning "  MSI installation failed: $($_.Exception.Message)"
+            }
+        }
+
+        if (-not $successfulInstall) {
+            Write-Host "  Copying module files directly..." -ForegroundColor Gray
+            $moduleRoot = Get-PreferredModuleRoot
+            $psd1Files = Get-ChildItem -Path $extractPath -Filter '*.psd1' -Recurse -ErrorAction SilentlyContinue
+
+            if (-not $psd1Files) {
+                Write-Warning "  No module manifests (.psd1) found in extracted package"
+            } else {
+                $moduleMap = @{}
+                foreach ($manifest in $psd1Files) {
+                    $versionDirectory = $manifest.Directory.FullName
+                    $moduleParent = $manifest.Directory.Parent
+                    $moduleName = $null
+
+                    if ($moduleParent) {
+                        $moduleName = Split-Path -Path $moduleParent.FullName -Leaf
+                    } else {
+                        $moduleName = Split-Path -Path $versionDirectory -Leaf
+                    }
+
+                    if ([string]::IsNullOrWhiteSpace($moduleName)) {
+                        continue
+                    }
+
+                    if (-not $moduleMap.ContainsKey($moduleName)) {
+                        $moduleMap[$moduleName] = $versionDirectory
+                    }
+                }
+
+                foreach ($moduleEntry in $moduleMap.GetEnumerator()) {
+                    $destinationRoot = Join-Path -Path $moduleRoot -ChildPath $moduleEntry.Key
+                    if (-not (Test-Path -Path $destinationRoot)) {
+                        New-Item -Path $destinationRoot -ItemType Directory -Force | Out-Null
+                    }
+
+                    try {
+                        Copy-Item -Path $moduleEntry.Value -Destination $destinationRoot -Recurse -Force
+                    } catch {
+                        Write-Warning "  Failed to copy module $($moduleEntry.Key): $($_.Exception.Message)"
+                    }
+                }
+
+                if ($moduleMap.Count -gt 0) {
+                    $successfulInstall = $true
+                }
+            }
+        }
+
+        return $successfulInstall
+    } catch {
+        Write-Warning "  Unexpected error while installing HP CMSL package: $($_.Exception.Message)"
+        return $false
+    } finally {
+        try {
+            if (Test-Path -Path $WorkingFolder) {
+                Remove-Item -Path $WorkingFolder -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        } catch {
+            # Best effort cleanup
+        }
+    }
+}
+
+# Ensure HPCMSL module availability with multiple strategies
+function Install-HPCMSLModule {
+    $existing = Get-Module -ListAvailable -Name 'HPCMSL' -ErrorAction SilentlyContinue
+    if ($existing) {
+        return $true
+    }
+
+    Write-Host "HP CMSL not found locally. Attempting installation from PowerShell Gallery..." -ForegroundColor Gray
+
+    $galleryInstalled = $false
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+        if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+            Write-Host "  Installing NuGet package provider" -ForegroundColor Gray
+            Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -Confirm:$false -ErrorAction Stop
+        }
+
+        $psget = Get-Module -ListAvailable -Name PowerShellGet -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+        if (-not $psget -or $psget.Version -lt [Version]'2.2.5') {
+            Write-Host "  Updating PowerShellGet to latest available version" -ForegroundColor Gray
+            Install-Module -Name PowerShellGet -Force -Scope CurrentUser -AllowClobber -Confirm:$false -ErrorAction Stop
+        }
+
+        $pkgMgmt = Get-Module -ListAvailable -Name PackageManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+        if (-not $pkgMgmt -or $pkgMgmt.Version -lt [Version]'1.4.8') {
+            Write-Host "  Updating PackageManagement module" -ForegroundColor Gray
+            Install-Module -Name PackageManagement -Force -Scope CurrentUser -AllowClobber -Confirm:$false -ErrorAction Stop
+        }
+
+        Install-Module -Name HPCMSL -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -Confirm:$false -ErrorAction Stop
+        $galleryInstalled = $true
+    } catch {
+        Write-Warning "  PowerShell Gallery installation failed: $($_.Exception.Message)"
+    }
+
+    if (-not $galleryInstalled) {
+        Write-Host "Attempting offline HP CMSL installation..." -ForegroundColor Gray
+        $downloadUrls = @(
+            'https://hpia.hpcloud.hp.com/downloads/cmsl/HPCMSL.zip',
+            'https://ftp.hp.com/pub/caps-softpaq/cmit/HPCMSL.zip'
+        )
+
+        if (-not (Install-HPCMSLPackage -DownloadUrls $downloadUrls)) {
+            return $false
+        }
+    }
+
+    $refreshed = Get-Module -ListAvailable -Name 'HPCMSL' -ErrorAction SilentlyContinue
+    if ($refreshed) {
+        $latest = $refreshed | Sort-Object Version -Descending | Select-Object -First 1
+        Write-Host "  HP CMSL module available (version: $($latest.Version))" -ForegroundColor Gray
+    } else {
+        Write-Warning "  HP CMSL module still not detected after installation attempts"
+    }
+
+    return [bool]$refreshed
 }
 
 # Dell Command Update
@@ -353,34 +579,16 @@ function Update-HPDrivers {
         # If HPIA fails, try HP CMSL with simplified approach
         Write-Host "Falling back to HP CMSL method..." -ForegroundColor Cyan
         
-        # Check if HP CMSL modules are available
-        $hpModules = Get-Module -ListAvailable -Name "HPCMSL" -ErrorAction SilentlyContinue
-        
+        # Ensure HP CMSL is available, attempting automatic installation if required
+        $hpModules = Get-Module -ListAvailable -Name 'HPCMSL' -ErrorAction SilentlyContinue
         if (-not $hpModules) {
-            Write-Host "HP CMSL not found. Installing from PowerShell Gallery..." -ForegroundColor Cyan
-            
-            # Simplified installation approach
-            try {
-                # Ensure TLS 1.2 for PowerShell Gallery
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                
-                # Install NuGet provider if not available
-                if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
-                    Write-Host "Installing NuGet package provider..." -ForegroundColor Gray
-                    Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -Confirm:$false
-                }
-                
-                # Install HP CMSL from PowerShell Gallery
-                Write-Host "Installing HPCMSL module from PowerShell Gallery..." -ForegroundColor Gray
-                Install-Module -Name HPCMSL -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -Confirm:$false
-                
-                Write-Host "HP CMSL installed successfully" -ForegroundColor Green
-                
-            } catch {
-                Write-Warning "Failed to install HP CMSL from PowerShell Gallery: $($_.Exception.Message)"
+            Write-Host "HP CMSL not installed. Attempting automatic deployment..." -ForegroundColor Cyan
+            if (-not (Install-HPCMSLModule)) {
+                Write-Warning "Unable to install HP CMSL automatically."
                 Write-Host "Skipping HP driver updates - please install HP CMSL manually or check network connectivity" -ForegroundColor Yellow
                 return
             }
+            Write-Host "HP CMSL installed successfully" -ForegroundColor Green
         }
         
         # Import HP CMSL module

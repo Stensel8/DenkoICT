@@ -1,10 +1,14 @@
-# Denko ICT Modern Endpoint Deployment
+# Modern Device Deployment - Denko-ICT
 
-<p align="right">
+<p align="left">
 	<a href="README.nl.md">
 		<img src="https://img.shields.io/badge/Switch%20to-Dutch-blue?style=for-the-badge" alt="Switch to Dutch" />
 	</a>
 </p>
+
+[![Codacy Security Scan](https://github.com/Stensel8/DenkoICT/actions/workflows/codacy.yml/badge.svg?branch=main)](https://github.com/Stensel8/DenkoICT/actions/workflows/codacy.yml)
+
+[![PSScriptAnalyzer](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml)
 
 ## Why this project exists
 This repository is the centerpiece of my internship at Denko ICT. I joined a team where many device deployments and configuration tasks were still performed manually. I got the opportunity to re-evaluate these processes. By building a more modern automation toolkit, I want to prove that Windows 11 Pro devices can be deployed, secured, and made productive faster and with fewer errors, without relying on legacy tooling.
