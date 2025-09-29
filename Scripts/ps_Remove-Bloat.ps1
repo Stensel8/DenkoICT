@@ -11,11 +11,12 @@
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
 .RELEASENOTES
-[Version 1.3.0] - Adopted SupportsShouldProcess, centralized admin elevation, and improved WhatIf consistency.
-[Version 1.2.0] - Hardened Start Menu recommendation suppression using additional policy keys.
-[Version 1.1.1] - Added more known bloatware apps to the removal list.
-[Version 1.1.0] - Added registry modifications to prevent reinstallation of bloatware.
 [Version 1.0.0] - Initial Release. Removes bloatware apps from Windows.
+[Version 1.1.0] - Added registry modifications to prevent reinstallation of bloatware.
+[Version 1.1.1] - Added more known bloatware apps to the removal list.
+[Version 1.2.0] - Hardened Start Menu recommendation suppression using additional policy keys.
+[Version 1.3.0] - Adopted SupportsShouldProcess, centralized admin elevation, and improved WhatIf consistency.
+
 #>
 
 <#
@@ -84,9 +85,9 @@ $invokedWithWhatIf = $PSBoundParameters.ContainsKey('WhatIf') -or $WhatIfPrefere
 
 if (-not $isAdmin) {
     if ($invokedWithWhatIf) {
-        Write-Host "Running in WhatIf mode without elevation. Some operations may be simulated or skipped due to limited permissions." -ForegroundColor Yellow
+    Write-Log "Running in WhatIf mode without elevation. Some operations may be simulated or skipped due to limited permissions." -Level 'Warning'
     } else {
-        Write-Host "Elevation required. Restarting script with administrative privileges..." -ForegroundColor Yellow
+    Write-Log "Elevation required. Restarting script with administrative privileges..." -Level 'Warning'
 
         try {
             $hostPath     = (Get-Process -Id $PID -ErrorAction Stop).Path
@@ -112,7 +113,7 @@ if (-not $isAdmin) {
 
             Start-Process -FilePath $hostPath -ArgumentList $argumentList -Verb RunAs | Out-Null
         } catch {
-            Write-Host "Failed to restart with elevated privileges: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "Failed to restart with elevated privileges: $($_.Exception.Message)" -Level 'Error'
         }
 
         exit
@@ -190,8 +191,8 @@ function Write-Log {
     # Write to file
     Add-Content -Path $LogPath -Value $logMessage -Force
     
-    # Write to console
-    Write-Output $logMessage
+    # Write to console via information stream
+    Write-Information -MessageData $logMessage -Tags $Level
 }
 
 function Remove-AppxByPattern {
@@ -349,20 +350,21 @@ foreach ($config in $registryConfigs) {
 }
 
 # --- Summary ---
-Write-Host "`n--- Removal Summary ---" -ForegroundColor Green
+Write-Information -MessageData '' -Tags 'Info'
+Write-Log "--- Removal Summary ---" -Level 'Info'
 
 if ($succeededRemovals.Count -gt 0) {
-    Write-Host "`nSuccessfully processed $($succeededRemovals.Count) packages:" -ForegroundColor Green
-    $succeededRemovals | ForEach-Object { Write-Host "- $_" -ForegroundColor Gray }
+    Write-Log "Successfully processed $($succeededRemovals.Count) packages:" -Level 'Success'
+    $succeededRemovals | ForEach-Object { Write-Log "- $_" -Level 'Success' }
 } else {
-    Write-Host "`nNo packages were removed or marked for removal." -ForegroundColor Yellow
+    Write-Log "No packages were removed or marked for removal." -Level 'Warning'
 }
 
 if ($failedRemovals.Count -gt 0) {
-    Write-Host "`nFailed to remove $($failedRemovals.Count) packages:" -ForegroundColor Red
-    $failedRemovals | ForEach-Object { Write-Host "- $_" -ForegroundColor Red }
+    Write-Log "Failed to remove $($failedRemovals.Count) packages:" -Level 'Error'
+    $failedRemovals | ForEach-Object { Write-Log "- $_" -Level 'Error' }
 }
 
 Write-Log "=== Bloatware removal completed ===" -Level 'Info'
 Write-Log "Log file saved to: $LogPath" -Level 'Info'
-Write-Host "`nBloatware removal script finished." -ForegroundColor Green
+Write-Log "Bloatware removal script finished." -Level 'Success'

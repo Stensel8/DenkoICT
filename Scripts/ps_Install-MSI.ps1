@@ -1,9 +1,7 @@
 ﻿
 #===========================================================================Get-MSIProps==========================================================================================
-# Revision: 2.0.0
-# Author: Sten Tijhuis (Stensel8)
-# Date: 15/09/2025
-# Purpose/Change: Refactored and moved to Scripts folder. See original credits below.
+
+#requires -Version 5.1
 
 Function Global:Get-MSIProps {
 <#  
@@ -16,12 +14,19 @@ Function Global:Get-MSIProps {
 .EXAMPLE
     Get-MSIProps 
 
-.NOTES  
- Version : 1.0.0
- Author: Jeffery Field
- LastUpdate: 3/26/24 1:38 PM
- Source:
- Change Log:
+.NOTES
+    Version:        2.0.0
+    Author:         Sten Tijhuis (Stensel8)
+    Creation Date:  15/09/2025
+    Purpose/Change: Refactored and moved to Scripts folder.
+
+.RELEASENOTES
+    Version 2.0.0 - 15/09/2025
+    - Refactored and moved to Scripts folder
+    
+    Version 1.0.0 - 3/26/2024
+    - Original version by Jeffery Field
+
 #>
 
     [CmdletBinding()]
@@ -32,15 +37,19 @@ Function Global:Get-MSIProps {
 
 #Get MSI files in the scripts path
 $MSIs = Get-ChildItem -Filter *.msi
-If($MSIs.count -eq '1' -and $msipath -eq $null){
+If($MSIs.count -eq '1' -and $null -eq $msipath){
 $msipath = "$($msis.FullName)"
 $MsiNoSpace = $MSIs.Name.replace(' ','')
 $MSILogFileName = $MsiNoSpace.replace('msi','txt')
-$MSILogPath = "C:\IT\$MSILogFileName"
+$logDirectory = 'C:\DenkoICT\Logs'
+if (-not (Test-Path -Path $logDirectory)) {
+    New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
+}
+$Global:MSILogPath = Join-Path -Path $logDirectory -ChildPath $MSILogFileName
 }
 
 #If there is more than 1 msi in the path and the MSI path wasn't specified throw an error
-If($MSIs.count -gt '1' -and $msipath -eq $null){throw "More than 1 msi in path and the path wasn't specified"}
+If($MSIs.count -gt '1' -and $null -eq $msipath){throw "More than 1 msi in path and the path wasn't specified"}
 
 $pathToMSI = $msipath
 
@@ -59,12 +68,12 @@ $propRecord = $propView.GetType().InvokeMember("Fetch", "InvokeMethod", $null, $
 $MSIProps = @()
 $Obj=New-Object PSObject
 
-while  ($propRecord -ne $null)
+while  ($null -ne $propRecord)
 {
 	$col1 = $propRecord.GetType().InvokeMember("StringData", "GetProperty", $null, $propRecord, 1)
 	$col2 = $propRecord.GetType().InvokeMember("StringData", "GetProperty", $null, $propRecord, 2)
  
-	#write-host $col1 - $col2
+    #write-output $col1 - $col2
     $itemdetails = [PScustomObject]@{
     MSIProperty = $col1
     Value = $col2
@@ -84,13 +93,13 @@ $database = $null
 
 Get-MSIProps
 
-If($Global:MSIProps -ne $null){
+If($null -ne $Global:MSIProps){
     $MSIObj=New-Object PSObject
     foreach($Prop in $Global:MSIProps){
 
     $MSIObj | Add-Member -Name "$($prop.MSIProperty)" -MemberType NoteProperty  -Value "$($prop.Value)"
     $AllMsiProps += $MSIobj
-    Write-Host "Adding $($prop.MSIProperty)" -MemberType NoteProperty  -Value "$($prop.Value)"
+        Write-Information -MessageData "Adding $($prop.MSIProperty) = $($prop.Value)" -Tags 'Info'
 }
 
 }else{throw "Could not get MSI properties"}
@@ -201,9 +210,9 @@ $global:ExitCode = "9999"
 }
 
 
-Write-Host "Starting Install-MSI function"
+Write-Information -MessageData "Starting Install-MSI function" -Tags 'Info'
 Install-MSI
 
-Write-Host "Status is $status"
+Write-Information -MessageData "Status is $status" -Tags 'Info'
 Exit $exitcode
 

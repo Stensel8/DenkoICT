@@ -37,7 +37,7 @@ Deze repository vormt het hoofdonderdeel van mijn stage bij Denko ICT. Ik kreeg 
 | Map/Bestand | Doel |
 | --- | --- |
 | `autounattend.xml` | Baseline unattend-configuratie voor Windows 11 Pro imaging-scenario's. |
-| `Scripts/Invoke-AdminToolkit.ps1` | Hoofdscript dat de toolkit orkestreert voor beheerders. |
+| `Scripts/ps_Custom-Functions.ps1` | Hoofdscript dat de toolkit orkestreert voor beheerders. |
 | `Scripts/ps_Install-Applications.ps1` | Automatiseert applicatie-installaties met winget en geselecteerde installers. |
 | `Scripts/ps_Install-Drivers.ps1` | Regelt driveruitrol met HP CMSL en Dell DCU-CLI. |
 | `Scripts/ps_Remove-Bloat.ps1` | Verwijdert overbodige OEM- en consumentenapps van beheerde apparaten. |
@@ -77,7 +77,7 @@ Deze repository vormt het hoofdonderdeel van mijn stage bij Denko ICT. Ik kreeg 
 ## Aan de slag
 1. Installeer [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) en voer scripts uit via Windows Terminal.
 2. Clone deze repository en bekijk de scripts die aansluiten op jouw deploy-scenario.
-3. Start `Invoke-AdminToolkit.ps1` met verhoogde rechten om de voorkeursworkflow te draaien.
+3. Start `ps_Custom-Functions.ps1` met verhoogde rechten om de voorkeursworkflow te draaien.
 4. Pas de applicatie- en drivermanifests in `Scripts` aan om te matchen met jouw devicecatalogus.
 
 > Alle scripts draaien zonder Microsoft Deployment Toolkit, batchbestanden, CMD, VBScript, PowerShell 2.0 of WMIC.

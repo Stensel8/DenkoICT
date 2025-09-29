@@ -88,6 +88,8 @@
 
 #>
 
+#requires -Version 5.1
+
 <#
 .SYNOPSIS
     Downloads and installs the latest version of winget and its dependencies.
@@ -550,33 +552,33 @@ function Invoke-ErrorHandler {
     # Handle common errors
     # Not returning $ErrorRecord on some errors is intentional
     if ($ErrorRecord.Exception.Message -match '0x80073D06') {
-        Write-Warning "Higher version already installed."
+        Write-Warning 'Higher version already installed.'
         Write-Warning "That's okay, continuing..."
     } elseif ($ErrorRecord.Exception.Message -match '0x80073CF0') {
-        Write-Warning "Same version already installed."
+        Write-Warning 'Same version already installed.'
         Write-Warning "That's okay, continuing..."
     } elseif ($ErrorRecord.Exception.Message -match '0x80073D02') {
         # Stop execution and return the ErrorRecord so that the calling try/catch block throws the error
-        Write-Warning "Resources modified are in-use. Try closing Windows Terminal / PowerShell / Command Prompt and try again."
-        Write-Warning "Windows Terminal sometimes has trouble installing winget. If you are using Windows Terminal and the problem persists, run the script with the -ForceClose parameter which will relaunch the script in conhost.exe and automatically end active processes associated with winget that could interfere with the installation. Please note that using the -ForceClose parameter will close the PowerShell window and could break custom scripts that rely on the current PowerShell session."
+        Write-Warning 'Resources modified are in-use. Try closing Windows Terminal / PowerShell / Command Prompt and try again.'
+        Write-Warning 'Windows Terminal sometimes has trouble installing winget. If you are using Windows Terminal and the problem persists, run the script with the -ForceClose parameter which will relaunch the script in conhost.exe and automatically end active processes associated with winget that could interfere with the installation. Please note that using the -ForceClose parameter will close the PowerShell window and could break custom scripts that rely on the current PowerShell session.'
         return $ErrorRecord
     } elseif ($ErrorRecord.Exception.Message -match '0x80073CF3') {
         # Prerequisite not detected, tell user to run it again
-        Write-Warning "Problem with one of the prerequisites."
-        Write-Warning "Try running the script again which usually fixes the issue. If the problem persists, try running the script with the -ForceClose parameter which will relaunch the script in conhost.exe and automatically end active processes associated with winget that could interfere with the installation. Please note that using the -ForceClose parameter will close the PowerShell window and could break custom scripts that rely on the current PowerShell session."
+        Write-Warning 'Problem with one of the prerequisites.'
+        Write-Warning 'Try running the script again which usually fixes the issue. If the problem persists, try running the script with the -ForceClose parameter which will relaunch the script in conhost.exe and automatically end active processes associated with winget that could interfere with the installation. Please note that using the -ForceClose parameter will close the PowerShell window and could break custom scripts that rely on the current PowerShell session.'
         return $ErrorRecord
     } elseif ($ErrorRecord.Exception.Message -match '0x80073CF9') {
-        Write-Warning "Registering winget failed with error code 0x80073CF9."
-        Write-Warning "This error usually occurs when using the Local System account to install winget. The SYSTEM account is not officially supported by winget and may not work. See the requirements section of the README. If winget is not working, run the installation script again using an Administrator account."
+        Write-Warning 'Registering winget failed with error code 0x80073CF9.'
+        Write-Warning 'This error usually occurs when using the Local System account to install winget. The SYSTEM account is not officially supported by winget and may not work. See the requirements section of the README. If winget is not working, run the installation script again using an Administrator account.'
     } elseif ($ErrorRecord.Exception.Message -match 'Unable to connect to the remote server') {
-        Write-Warning "Cannot connect to the Internet to download the required files."
-        Write-Warning "Try running the script again and make sure you are connected to the Internet."
-        Write-Warning "Sometimes the nuget.org server is down, so you may need to try again later."
+        Write-Warning 'Cannot connect to the Internet to download the required files.'
+        Write-Warning 'Try running the script again and make sure you are connected to the Internet.'
+        Write-Warning 'Sometimes the nuget.org server is down, so you may need to try again later.'
         return $ErrorRecord
     } elseif ($ErrorRecord.Exception.Message -match "The remote name could not be resolved") {
-        Write-Warning "Cannot connect to the Internet to download the required files."
-        Write-Warning "Try running the script again and make sure you are connected to the Internet."
-        Write-Warning "Make sure DNS is working correctly on your computer."
+        Write-Warning 'Cannot connect to the Internet to download the required files.'
+        Write-Warning 'Try running the script again and make sure you are connected to the Internet.'
+        Write-Warning 'Make sure DNS is working correctly on your computer.'
     } else {
         # For other errors, we should stop the execution and return the ErrorRecord so that the calling try/catch block throws the error
         return $ErrorRecord
@@ -645,9 +647,9 @@ function ExitWithDelay {
 
     # Debug mode output
     if ($Debug -and $Wait) {
-        Write-Warning "Wait specified, waiting several seconds..."
+        Write-Warning 'Wait specified, waiting several seconds...'
     } elseif ($Debug -and !$Wait) {
-        Write-Warning "Wait not specified, exiting immediately..."
+        Write-Warning 'Wait not specified, exiting immediately...'
     }
 
     # If Wait is specified, wait for x seconds before exiting
@@ -1024,7 +1026,7 @@ function Install-NuGetIfRequired {
             }
         } else {
             # NuGet should be included by default in PowerShell 7, so if it's not detected, advise reinstallation
-            Write-Warning "NuGet is not detected in PowerShell 7. Consider reinstalling PowerShell 7, as NuGet should be included by default."
+            Write-Warning 'NuGet is not detected in PowerShell 7. Consider reinstalling PowerShell 7, as NuGet should be included by default.'
         }
     } else {
         # NuGet PackageProvider is already installed
@@ -1189,7 +1191,7 @@ Write-Output "To force script pausing after execution, run winget-install -NoExi
 
 # Check if the current user is an administrator
 if (-not (Test-AdminPrivileges)) {
-    Write-Warning "winget requires Administrator privileges to install. Please run the script as an Administrator and try again."
+    Write-Warning 'winget requires Administrator privileges to install. Please run the script as an Administrator and try again.'
     ExitWithDelay 1
 }
 
@@ -1204,37 +1206,37 @@ $currentProcess = Get-CurrentProcess
 
 # If it's a workstation, make sure it is Windows 10+
 if ($osVersion.Type -eq "Workstation" -and $osVersion.NumericVersion -lt 10) {
-    Write-Error "winget requires Windows 10 or later on workstations. Your version of Windows is not supported."
+    Write-Error 'winget requires Windows 10 or later on workstations. Your version of Windows is not supported.'
     ExitWithDelay 1
 }
 
 # If it's a workstation with Windows 10, make sure it's version 1809 or greater
 if ($osVersion.Type -eq "Workstation" -and $osVersion.NumericVersion -eq 10 -and $osVersion.ReleaseId -lt 1809) {
-    Write-Error "winget requires Windows 10 version 1809 or later on workstations. Please update Windows to a compatible version."
+    Write-Error 'winget requires Windows 10 version 1809 or later on workstations. Please update Windows to a compatible version.'
     ExitWithDelay 1
 }
 
 # If it's a server, it needs to be 2019+
 if ($osVersion.Type -eq "Server" -and $osVersion.NumericVersion -lt 2019) {
-    Write-Error "winget requires Windows Server 2019 or newer on server platforms. Your version of Windows Server is not supported."
+    Write-Error 'winget requires Windows Server 2019 or newer on server platforms. Your version of Windows Server is not supported.'
     ExitWithDelay 1
 }
 
 # Check if winget is already installed
 if (Get-WingetStatus) {
     if ($Force -eq $false) {
-        Write-Warning "winget is already installed, exiting..."
-        Write-Warning "If you want to reinstall winget, run the script with the -Force parameter."
+        Write-Warning 'winget is already installed, exiting...'
+        Write-Warning 'If you want to reinstall winget, run the script with the -Force parameter.'
         ExitWithDelay 0 5
     }
 }
 
 # Check if ForceClose parameter is specified. If terminal detected, so relaunch in conhost
 if ($ForceClose) {
-    Write-Warning "ForceClose parameter is specified."
+    Write-Warning 'ForceClose parameter is specified.'
     if ($currentProcess.Name -eq "WindowsTerminal") {
-        Write-Warning "Terminal detected, relaunching in conhost in 10 seconds..."
-        Write-Warning "It may break your custom batch files and ps1 scripts with extra commands!"
+        Write-Warning 'Terminal detected, relaunching in conhost in 10 seconds...'
+        Write-Warning 'It may break your custom batch files and ps1 scripts with extra commands!'
         Start-Sleep -Seconds 10
 
         # Prepare the command to relaunch
@@ -1259,7 +1261,7 @@ if ($ForceClose) {
         # Stop the current process module
         Stop-Process -id $currentProcess.Id
     } else {
-        Write-Warning "Windows Terminal not detected, continuing..."
+    Write-Warning 'Windows Terminal not detected, continuing...'
     }
 }
 
@@ -1506,9 +1508,9 @@ try {
         # If winget is still not detected as a command, show warning
         Write-Debug "Get-WinGetStatus: $(Get-WingetStatus)"
         if (Get-WingetStatus -ne $true) {
-            Write-Warning "winget is installed but is not detected as a command. Try using winget now. If it doesn't work, wait about 1 minute and try again (it is sometimes delayed). Also try restarting your computer."
-            Write-Warning "If you restart your computer and the command still isn't recognized, please read the Troubleshooting section`nof the README: https://github.com/asheroto/winget-install#troubleshooting`n"
-            Write-Warning "Make sure you have the latest version of the script by running this command: $PowerShellGalleryName -CheckForUpdate`n`n"
+            Write-Warning 'winget is installed but is not detected as a command. Try using winget now. If it does not work, wait about 1 minute and try again (it is sometimes delayed). Also try restarting your computer.'
+            Write-Warning 'If you restart your computer and the command still is not recognized, please read the Troubleshooting section of the README: https://github.com/asheroto/winget-install#troubleshooting'
+            Write-Warning "Make sure you have the latest version of the script by running this command: $PowerShellGalleryName -CheckForUpdate"
         }
     }
 
@@ -1519,15 +1521,15 @@ try {
     # ============================================================================ #
 
     Write-Section "WARNING! An error occurred during installation!"
-    Write-Warning "If messages above don't help and the problem persists, please read the Troubleshooting section`nof the README: https://github.com/asheroto/winget-install#troubleshooting"
-    Write-Warning "Make sure you have the latest version of the script by running this command: $PowerShellGalleryName -CheckForUpdate`n`n"
+    Write-Warning 'If messages above do not help and the problem persists, please read the Troubleshooting section of the README: https://github.com/asheroto/winget-install#troubleshooting'
+    Write-Warning "Make sure you have the latest version of the script by running this command: $PowerShellGalleryName -CheckForUpdate"
 
     # If it's not 0x80073D02 (resources in use), show error
     if ($_.Exception.Message -notmatch '0x80073D02') {
         if ($Debug) {
-            Write-Warning "Line number : $($_.InvocationInfo.ScriptLineNumber)"
+            Write-Warning ("Line number : {0}" -f $_.InvocationInfo.ScriptLineNumber)
         }
-        Write-Warning "Error: $($_.Exception.Message)`n"
+        Write-Warning "Error: $($_.Exception.Message)"
     }
 
     ExitWithDelay 1
