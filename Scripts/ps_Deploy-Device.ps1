@@ -6,7 +6,13 @@
 
 .COMPANYNAME Denko ICT
 
-.TAGS PowerShell Windows Deployment Automation Logging
+.TAGS PowerShell Windows Deploymenfunction Get-Script {
+    param([string]$ScriptName)
+    $url = "$ScriptBaseUrl/$ScriptName"
+    $localPath = Join-Path $script:DownloadDirectory $ScriptName
+    Get-RemoteScript -ScriptUrl $url -SavePath $localPath
+    return $localPath
+}ation Logging
 
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
@@ -16,6 +22,7 @@
 [Version 1.0.2] - Aligned with better standards, improved error handling, and admin validation.
 [Version 1.1.0] - Improved external log collection.
 [Version 1.2.0] - Enforces C:\DenkoICT\Logs for all logging, uses Bitstransfer for downloads, forces custom-functions download.
+[Version 1.2.2] - Enforces C:\DenkoICT\Download for all downloads.
 #>
 
 #requires -Version 5.1
@@ -39,6 +46,7 @@ param (
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:LogDirectory = 'C:\DenkoICT\Logs'
+$script:DownloadDirectory = 'C:\DenkoICT\Download'
 $script:TranscriptPath = $null
 $script:TranscriptStarted = $false
 
@@ -77,10 +85,16 @@ function Assert-Administrator {
     Write-Log "Administrator privileges confirmed." "VERBOSE"
 }
 
-function Initialize-Logging {
+function Initialize-Directories {
     if (-not (Test-Path $script:LogDirectory)) {
         New-Item -Path $script:LogDirectory -ItemType Directory -Force | Out-Null
     }
+    if (-not (Test-Path $script:DownloadDirectory)) {
+        New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
+    }
+}
+
+function Initialize-Logging {
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $script:TranscriptPath = Join-Path $script:LogDirectory "Deployment-$timestamp.log"
     try {
@@ -93,7 +107,7 @@ function Initialize-Logging {
     Write-Log "Transcript logging path: ${script:TranscriptPath}" "INFO"
 }
 
-function Download-RemoteScript {
+function Get-RemoteScript {
     param([string]$ScriptUrl,[string]$SavePath)
     try {
         Import-Module BitsTransfer -ErrorAction SilentlyContinue
@@ -114,19 +128,15 @@ function Download-RemoteScript {
 function Get-RemoteScript {
     param([string]$ScriptName)
     $url = "$ScriptBaseUrl/$ScriptName"
-    $localPath = Join-Path $env:TEMP "DenkoICT\$ScriptName"
-    $localDir = Split-Path -Path $localPath -Parent
-    if (-not (Test-Path -Path $localDir)) {
-        New-Item -Path $localDir -ItemType Directory -Force | Out-Null
-    }
+    $localPath = Join-Path $script:DownloadDirectory $ScriptName
     Download-RemoteScript -ScriptUrl $url -SavePath $localPath
     return $localPath
 }
 
 function Import-CustomFunctions {
     $customFunctionsUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Custom-Functions.ps1"
-    $target = Join-Path $env:TEMP "DenkoICT\ps_Custom-Functions.ps1"
-    Download-RemoteScript -ScriptUrl $customFunctionsUrl -SavePath $target
+    $target = Join-Path $script:DownloadDirectory "ps_Custom-Functions.ps1"
+    Get-RemoteScript -ScriptUrl $customFunctionsUrl -SavePath $target
     . $target
     Write-Log "Custom functions imported from $customFunctionsUrl" "INFO"
 }
