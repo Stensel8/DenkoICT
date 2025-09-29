@@ -1,290 +1,184 @@
-<#PSScriptInfo
-
-.VERSION 1.1.0
-
-.AUTHOR Sten Tijhuis
-
-.COMPANYNAME Denko ICT
-
-.TAGS PowerShell Windows WinGet Updates PackageManager Maintenance
-
-.PROJECTURI https://github.com/Stensel8/DenkoICT
-
-.RELEASENOTES
-[Version 1.1.0] - Added WhatIf support, standardized logging, and administrator validation.
-[Version 1.0.1] - Improved error handling and logging.
-[Version 1.0.0] - Initial Release. Updates all applications via WinGet.
-#>
-
 <#
 .SYNOPSIS
-    Updates all installed applications using WinGet package manager.
+    Updates all applications via WinGet.
 
 .DESCRIPTION
-    This script checks for available updates for all installed applications managed by WinGet
-    and performs the updates automatically. It includes progress tracking, error handling,
-    and detailed logging of the update process.
+    Checks for and installs available updates for applications managed by WinGet.
 
 .PARAMETER ExcludeApps
     Array of application IDs to exclude from updates.
 
-.PARAMETER LogPath
-    Path for the update log file. Creates log in temp directory by default.
-
 .PARAMETER ShowOnly
     Only shows available updates without installing them.
 
+.PARAMETER SkipLogging
+    Skip transcript logging for quick execution.
+
 .EXAMPLE
     .\ps_Update-AllApps.ps1
-    
-    Updates all applications with available updates.
+    Updates all applications.
 
 .EXAMPLE
     .\ps_Update-AllApps.ps1 -ShowOnly
-    
-    Shows available updates without installing them.
+    Shows available updates without installing.
 
 .EXAMPLE
     .\ps_Update-AllApps.ps1 -ExcludeApps @("Mozilla.Firefox", "Google.Chrome")
-    
-    Updates all applications except Firefox and Chrome.
+    Updates all except Firefox and Chrome.
 
-.OUTPUTS
-    Console output showing update progress and log file with detailed results.
+.RELEASENOTES
+[Version 1.0.0] - Initial Release. Updates all apps via WinGet.
+[Version 2.0.0] - Improved script using best practises and advanced features such as cmdletbinding.
+
 
 .NOTES
-    Version      : 1.0.1
-    Created by   : Sten Tijhuis
-    Company      : Denko ICT
-    
-    Requires WinGet to be installed and configured.
-    Updates are performed silently with automatic agreement acceptance.
-    
-    Exit codes:
-    0 - All updates successful
-    1 - Some or all updates failed
-
-.LINK
-    Project Site: https://github.com/Stensel8/DenkoICT
+    Author:   Sten Tijhuis
+    Company:  Denko ICT
+    Requires: WinGet, Admin rights
 #>
 
 #requires -Version 5.1
 
-[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $false)]
     [string[]]$ExcludeApps = @(),
-    
-    [Parameter(Mandatory = $false)]
-    [string]$LogPath = "$env:TEMP\DenkoICT-Updates-$(Get-Date -Format 'yyyyMMdd-HHmmss').log",
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$ShowOnly
+    [switch]$ShowOnly,
+    [switch]$SkipLogging
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 
-$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'ps_Invoke-AdminToolkit.ps1'
-if (-not (Test-Path -Path $commonModule)) {
-    throw "Unable to locate shared helper module at $commonModule"
+# Load custom functions
+$functionsPath = Join-Path $PSScriptRoot 'ps_Custom-Functions.ps1'
+if (-not (Test-Path $functionsPath)) {
+    Write-Error "Required functions file not found: $functionsPath"
+    exit 1
+}
+. $functionsPath
+
+# Initialize
+if (-not $SkipLogging) {
+    Start-Logging -LogName 'Update-AllApps.log'
 }
 
-. $commonModule
-
-Assert-AdminRights
-
-# Function to write colored and logged output
-function Write-ColorLog {
-    param(
-        [string]$Message,
-        [ValidateSet('Info', 'Success', 'Warning', 'Error', 'Highlight')]
-        [string]$Level = 'Info'
-    )
+try {
+    Assert-AdminRights
     
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $logMessage = "[$timestamp] [$Level] $Message"
-    
-    # Write to log file
-    Add-Content -Path $LogPath -Value $logMessage -Force
-    
-    $logLevel = switch ($Level) {
-        'Success' { 'Success' }
-        'Warning' { 'Warning' }
-        'Error'   { 'Error' }
-        'Highlight' { 'Verbose' }
-        default   { 'Info' }
-    }
-
-    Write-Log -Message $Message -Level $logLevel
-}
-
-# Function to check if WinGet is available
-function Test-WinGetAvailable {
+    # Check WinGet availability
+    Write-Log "Checking WinGet availability..." -Level Info
     try {
-        $wingetVersion = winget --version
-        if ($wingetVersion) {
-            Write-ColorLog "WinGet version: $wingetVersion" -Level 'Info'
-            return $true
+        $wingetVersion = winget --version 2>$null
+        if (-not $wingetVersion) {
+            throw "WinGet not found"
         }
+        Write-Log "WinGet version: $wingetVersion" -Level Info
     } catch {
-        Write-ColorLog "WinGet is not available: $_" -Level 'Error'
-        return $false
+        Write-Log "WinGet is not installed or not in PATH" -Level Error
+        exit 1
     }
-}
-
-# Function to get available updates
-function Get-WinGetUpdates {
-    Write-ColorLog "Checking for available updates..." -Level 'Info'
     
-    try {
-        # Run winget upgrade to get list
-        $upgradeOutput = winget upgrade --include-unknown 2>&1
+    # Get available updates
+    Write-Log "Checking for available updates..." -Level Info
+    $upgradeOutput = winget upgrade --include-unknown 2>&1
+    
+    # Parse output for updates
+    $updates = @()
+    $parsing = $false
+    
+    foreach ($line in $upgradeOutput) {
+        # Start parsing after the header line
+        if ($line -match '^-+\s+-+') {
+            $parsing = $true
+            continue
+        }
         
-        # Parse the output
-        $updates = @()
-        $startParsing = $false
+        if (-not $parsing) { continue }
+        if ($line -match '^\d+ upgrades? available') { break }
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
         
-        foreach ($line in $upgradeOutput) {
-            if ($line -match "^-+\s+-+") {
-                $startParsing = $true
+        # Parse update line (Name, Id, Current Version, Available Version)
+        $parts = $line -split '\s{2,}'
+        if ($parts.Count -ge 4) {
+            $id = $parts[1].Trim()
+            
+            # Skip if in exclude list
+            if ($id -in $ExcludeApps) {
+                Write-Log "Skipping excluded app: $id" -Level Info
                 continue
             }
             
-            if ($startParsing -and $line.Trim() -ne "" -and $line -notmatch "^\d+ upgrades available") {
-                $parts = $line -split '\s{2,}'
-                if ($parts.Count -ge 4) {
-                    $update = [PSCustomObject]@{
-                        Name = $parts[0].Trim()
-                        Id = $parts[1].Trim()
-                        CurrentVersion = $parts[2].Trim()
-                        AvailableVersion = $parts[3].Trim()
-                    }
-                    
-                    # Check if app is excluded
-                    if ($ExcludeApps -notcontains $update.Id) {
-                        $updates += $update
-                    }
-                }
+            $updates += [PSCustomObject]@{
+                Name = $parts[0].Trim()
+                Id = $id
+                CurrentVersion = $parts[2].Trim()
+                AvailableVersion = $parts[3].Trim()
             }
         }
-        
-        return $updates
-        
-    } catch {
-        Write-ColorLog "Error checking for updates: $_" -Level 'Error'
-        return @()
-    }
-}
-
-# Function to perform updates
-function Update-Applications {
-    param(
-        [array]$Updates
-    )
-    
-    if ($Updates.Count -eq 0) {
-        Write-ColorLog "No updates available." -Level 'Success'
-        return 0
     }
     
-    Write-ColorLog "Found $($Updates.Count) available updates:" -Level 'Highlight'
-    Write-ColorLog "----------------------------------------" -Level 'Highlight'
+    if ($updates.Count -eq 0) {
+        Write-Log "No updates available" -Level Success
+        Set-IntuneSuccess -AppName 'AppUpdates' -Version (Get-Date -Format 'yyyy.MM.dd')
+        exit 0
+    }
     
-    foreach ($update in $Updates) {
-        Write-Host "$($update.Name) | $($update.CurrentVersion) → $($update.AvailableVersion)"
+    Write-Log "Found $($updates.Count) available updates:" -Level Info
+    foreach ($update in $updates) {
+        Write-Log "  $($update.Name): $($update.CurrentVersion) → $($update.AvailableVersion)" -Level Info
     }
     
     if ($ShowOnly) {
-        Write-ColorLog "`nShowing updates only (ShowOnly mode enabled)" -Level 'Warning'
-        return 0
+        Write-Log "ShowOnly mode - skipping installation" -Level Warning
+        exit 0
     }
     
-    Write-ColorLog "`nStarting updates..." -Level 'Info'
+    # Install updates
+    Write-Log "Starting updates..." -Level Info
+    $success = 0
+    $failed = 0
     
-    $successCount = 0
-    $failCount = 0
-    $currentItem = 0
-    
-    foreach ($update in $Updates) {
-        $currentItem++
-        $percentComplete = [math]::Round(($currentItem / $Updates.Count) * 100)
+    foreach ($update in $updates) {
+        Write-Log "Updating $($update.Name)..." -Level Info
         
-        Write-ColorLog "[$currentItem/$($Updates.Count)] ($percentComplete%) Updating $($update.Name)..." -Level 'Highlight'
-        
-        try {
-            # Run update
-            $process = Start-Process -FilePath "winget" -ArgumentList @(
-                "upgrade"
-                "--id", $update.Id
-                "--accept-source-agreements"
-                "--accept-package-agreements"
-                "--silent"
-                "--force"
+        $result = Invoke-WithRetry -ScriptBlock {
+            $proc = Start-Process winget -ArgumentList @(
+                'upgrade',
+                '--id', $update.Id,
+                '--silent',
+                '--accept-package-agreements',
+                '--accept-source-agreements'
             ) -Wait -PassThru -NoNewWindow
             
-            if ($process.ExitCode -eq 0) {
-                Write-ColorLog "  ✓ Successfully updated $($update.Name)" -Level 'Success'
-                $successCount++
-            } else {
-                Write-ColorLog "  ✗ Failed to update $($update.Name) (Exit code: $($process.ExitCode))" -Level 'Error'
-                $failCount++
+            if ($proc.ExitCode -ne 0) {
+                throw "Exit code: $($proc.ExitCode)"
             }
-            
-        } catch {
-            Write-ColorLog "  ✗ Exception updating $($update.Name): $_" -Level 'Error'
-            $failCount++
+        } -MaxAttempts 2 -DelaySeconds 3
+        
+        if ($null -eq $result -or $result -eq $true) {
+            Write-Log "  ✓ Updated successfully" -Level Success
+            $success++
+        } else {
+            Write-Log "  ✗ Update failed" -Level Error
+            $failed++
         }
     }
     
     # Summary
-    Write-ColorLog "`n=== Update Summary ===" -Level 'Highlight'
-    Write-ColorLog "Total updates: $($Updates.Count)" -Level 'Info'
-    Write-ColorLog "Successful: $successCount" -Level $(if ($successCount -gt 0) { 'Success' } else { 'Info' })
-    Write-ColorLog "Failed: $failCount" -Level $(if ($failCount -gt 0) { 'Error' } else { 'Info' })
+    Write-Log "Update complete: $success succeeded, $failed failed" -Level $(if ($failed -eq 0) { 'Success' } else { 'Warning' })
     
-    return $(if ($failCount -gt 0) { 1 } else { 0 })
-}
-
-# Main execution
-
-Write-ColorLog "=== WinGet Application Update Started ===" -Level 'Highlight'
-Write-ColorLog "User: $env:USERNAME" -Level 'Info'
-Write-ColorLog "Computer: $env:COMPUTERNAME" -Level 'Info'
-
-if ($ExcludeApps.Count -gt 0) {
-    Write-ColorLog "Excluded apps: $($ExcludeApps -join ', ')" -Level 'Warning'
-}
-
-# Check WinGet availability
-if (-not (Test-WinGetAvailable)) {
-    Write-ColorLog "WinGet is not installed. Please install WinGet first." -Level 'Error'
-    exit 1
-}
-
-# Get available updates
-$updates = Get-WinGetUpdates
-
-# Determine whether to perform updates (respects -WhatIf)
-$shouldApplyUpdates = $PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Install available WinGet application updates')
-
-if ($ShowOnly) {
-    Write-ColorLog "ShowOnly mode enabled. Listing updates without installing." -Level 'Warning'
-    if ($updates.Count -gt 0) {
-        Write-ColorLog "Updates available:" -Level 'Highlight'
-        $updates | ForEach-Object { Write-ColorLog "$($_.Name) | $($_.CurrentVersion) → $($_.AvailableVersion)" -Level 'Highlight' }
+    # Record Intune success if all updates succeeded
+    if ($failed -eq 0) {
+        Set-IntuneSuccess -AppName 'AppUpdates' -Version (Get-Date -Format 'yyyy.MM.dd')
     }
-    $exitCode = 0
-} elseif (-not $shouldApplyUpdates) {
-    Write-ColorLog "WhatIf: Skipping installation of WinGet updates." -Level 'Warning'
-    $exitCode = 0
-} else {
-    $exitCode = Update-Applications -Updates $updates
+    
+    exit $(if ($failed -gt 0) { 1 } else { 0 })
+    
+} catch {
+    Write-Log "Update process failed: $_" -Level Error
+    exit 1
+} finally {
+    if (-not $SkipLogging) {
+        Stop-Logging
+    }
 }
-
-Write-ColorLog "Log file saved to: $LogPath" -Level 'Info'
-Write-ColorLog "`nExiting..." -Level 'Highlight'
-
-Start-Sleep -Seconds 1
-
-exit $exitCode

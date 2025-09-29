@@ -1,10 +1,14 @@
-# Denko ICT Modern Endpoint Deployment
+# Modern Device Deployment - Denko-ICT
 
-<p align="right">
+<p align="left">
 	<a href="README.nl.md">
 		<img src="https://img.shields.io/badge/Switch%20to-Dutch-blue?style=for-the-badge" alt="Switch to Dutch" />
 	</a>
 </p>
+
+[![Codacy Security Scan](https://github.com/Stensel8/DenkoICT/actions/workflows/codacy.yml/badge.svg?branch=main)](https://github.com/Stensel8/DenkoICT/actions/workflows/codacy.yml)
+
+[![PSScriptAnalyzer](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml)
 
 ## Why this project exists
 This repository is the centerpiece of my internship at Denko ICT. I joined a team where many device deployments and configuration tasks were still performed manually. I got the opportunity to re-evaluate these processes. By building a more modern automation toolkit, I want to prove that Windows 11 Pro devices can be deployed, secured, and made productive faster and with fewer errors, without relying on legacy tooling.
@@ -33,7 +37,7 @@ This repository is the centerpiece of my internship at Denko ICT. I joined a tea
 | Folder/File | Purpose |
 | --- | --- |
 | `autounattend.xml` | Baseline unattend configuration for Windows 11 Pro imaging scenarios. |
-| `Scripts/Invoke-AdminToolkit.ps1` | Primary entry point that loads the toolkit into memory for administrators. |
+| `Scripts/ps_Custom-Functions.ps1` | Primary entry point that loads the toolkit into memory for administrators. |
 | `Scripts/ps_Install-Applications.ps1` | Automates application installation using winget and official installers. |
 | `Scripts/ps_Install-Drivers.ps1` | Handles driver deployment leveraging HP CMSL and Dell DCU-CLI. |
 | `Scripts/ps_Remove-Bloat.ps1` | Removes unnecessary Windows, OEM and consumer applications from managed devices. This script helps to declutter the user experience and improve system performance. |
@@ -74,7 +78,7 @@ This repository is the centerpiece of my internship at Denko ICT. I joined a tea
 ## Getting started
 1. Install [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) and run scripts from Windows Terminal.
 2. Clone this repository and review the scripts relevant to your deployment scenario.
-3. Launch `Invoke-AdminToolkit.ps1` with elevated privileges to orchestrate the preferred workflow.
+3. Launch `ps_Custom-Functions.ps1` with elevated privileges to orchestrate the preferred workflow.
 4. Customize the application and driver manifests inside `Scripts` to match your device catalogue.
 
 > All scripts are designed to run without the need for Microsoft Deployment Toolkit, batch files, CMD, VBScript, PowerShell 2.0, or WMIC.

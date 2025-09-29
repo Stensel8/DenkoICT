@@ -1,123 +1,168 @@
-<#PSScriptInfo
-
-.VERSION 1.0.0
-
-.AUTHOR Sten Tijhuis
-
-.COMPANYNAME Denko ICT
-
-.TAGS PowerShell Windows Software Inventory Registry InstalledPrograms
-
-.PROJECTURI https://github.com/Stensel8/DenkoICT
-
-.RELEASENOTES
-[Version 1.0.0] - Initial Release. Gets installed software from registry with Dutch labels.
-
-#>
-
 <#
 .SYNOPSIS
-    Retrieves a list of installed software from Windows registry.
+    Gets all installed software including Store apps and Win32 programs.
 
 .DESCRIPTION
-    This script queries multiple registry locations to get a comprehensive list of installed
-    software on the system. It checks both 32-bit and 64-bit registry paths as well as
-    user-specific installations. Results are displayed with Dutch column headers.
+    Queries registry for traditional Win32 apps and Windows Store for UWP/MSIX apps.
+    Combines results into unified list with consistent properties.
 
 .PARAMETER ExportPath
-    Optional path to export results to CSV file.
+    Export results to CSV file.
 
 .PARAMETER IncludeUpdates
-    Include Windows Updates and patches in the results.
+    Include Windows Updates in results.
+
+.PARAMETER StoreAppsOnly
+    Show only Store/UWP apps.
+
+.PARAMETER Win32Only
+    Show only traditional Win32 apps.
+
+.PARAMETER SkipLogging
+    Skip transcript logging.
 
 .EXAMPLE
     .\ps_Get-InstalledSoftware.ps1
-    
-    Displays all installed software in a formatted table.
+    Shows all installed software.
 
 .EXAMPLE
-    .\ps_Get-InstalledSoftware.ps1 -ExportPath "C:\Reports\Software.csv"
-    
-    Exports installed software list to CSV file.
+    .\ps_Get-InstalledSoftware.ps1 -StoreAppsOnly
+    Shows only Store apps.
 
 .EXAMPLE
-    .\ps_Get-InstalledSoftware.ps1 | Where-Object Publisher -like "*Microsoft*"
-    
-    Shows only Microsoft software.
-
-.OUTPUTS
-    PSCustomObject with properties: Naam, Versie, Publisher, InstallatieDatum
+    .\ps_Get-InstalledSoftware.ps1 -ExportPath "C:\software.csv"
+    Exports all software to CSV.
 
 .NOTES
-    Version      : 1.0.0
-    Created by   : Sten Tijhuis
-    Company      : Denko ICT
-    
-    Registry paths checked:
-    - HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
-    - HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* (64-bit systems)
-    - HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
-
-.LINK
-    Project Site: https://github.com/Stensel8/DenkoICT
+    Version:  1.1.0
+    Author:   Sten Tijhuis
+    Company:  Denko ICT
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $false)]
     [string]$ExportPath,
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$IncludeUpdates
+    [switch]$IncludeUpdates,
+    [switch]$StoreAppsOnly,
+    [switch]$Win32Only,
+    [switch]$SkipLogging
 )
 
-# Registry paths to check for installed software
-$registryPaths = @(
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
-    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
-    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
-)
+#requires -Version 5.1
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'SilentlyContinue'
 
-Write-Verbose "Scanning registry for installed software..."
-
-$installedApps = foreach ($path in $registryPaths) {
-    Write-Verbose "Checking: $path"
-    
-    Get-ItemProperty $path -ErrorAction SilentlyContinue | 
-    Where-Object { 
-        $_.DisplayName -and 
-        ($IncludeUpdates -or $_.DisplayName -notlike "*Update*" -and $_.DisplayName -notlike "KB*")
-    } |
-    Select-Object @{Name="Naam";Expression={$_.DisplayName}},
-                  @{Name="Versie";Expression={$_.DisplayVersion}},
-                  @{Name="Publisher";Expression={$_.Publisher}},
-                  @{Name="InstallatieDatum";Expression={
-                      if ($_.InstallDate) {
-                          try {
-                              [datetime]::ParseExact($_.InstallDate, "yyyyMMdd", $null).ToString("yyyy-MM-dd")
-                          } catch {
-                              $_.InstallDate
-                          }
-                      }
-                  }}
-}
-
-# Remove duplicates based on name
-$installedApps = $installedApps | Sort-Object Naam -Unique
-
-Write-Host "Found $($installedApps.Count) installed applications" -ForegroundColor Green
-
-if ($ExportPath) {
-    try {
-        $installedApps | Export-Csv -Path $ExportPath -NoTypeInformation -Encoding UTF8
-        Write-Host "Results exported to: $ExportPath" -ForegroundColor Green
-    } catch {
-        Write-Warning "Failed to export to CSV: $_"
-    }
+# Load custom functions
+$functionsPath = Join-Path $PSScriptRoot 'ps_Custom-Functions.ps1'
+if (Test-Path $functionsPath) {
+    . $functionsPath
+    $useCustomFunctions = $true
 } else {
-    # Display results
-    $installedApps | Sort-Object Naam | Format-Table -AutoSize
+    $useCustomFunctions = $false
+    function Write-Log {
+        param($Message, $Level = 'Info')
+        Write-Host "[$Level] $Message"
+    }
 }
 
-# Return the objects for pipeline use
-return $installedApps
+if ($useCustomFunctions -and -not $SkipLogging) {
+    Start-Logging -LogName 'Get-InstalledSoftware.log'
+}
+
+try {
+    $allSoftware = @()
+    
+    # Get Win32 apps from registry
+    if (-not $StoreAppsOnly) {
+        Write-Log "Scanning registry for Win32 applications..." -Level Info
+        
+        $registryPaths = @(
+            "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        )
+        
+        $win32Apps = foreach ($path in $registryPaths) {
+            Get-ItemProperty $path -ErrorAction SilentlyContinue | 
+            Where-Object { 
+                $_.DisplayName -and 
+                ($IncludeUpdates -or ($_.DisplayName -notlike "*Update*" -and $_.DisplayName -notlike "KB*"))
+            } |
+            ForEach-Object {
+                [PSCustomObject]@{
+                    Name = $_.DisplayName
+                    Version = $_.DisplayVersion
+                    Publisher = $_.Publisher
+                    InstallDate = if ($_.InstallDate) {
+                        try {
+                            [datetime]::ParseExact($_.InstallDate, "yyyyMMdd", $null).ToString("yyyy-MM-dd")
+                        } catch {
+                            $_.InstallDate
+                        }
+                    } else { $null }
+                    Type = "Win32"
+                    Location = $_.InstallLocation
+                }
+            }
+        }
+        
+        $allSoftware += $win32Apps
+        Write-Log "Found $($win32Apps.Count) Win32 applications" -Level Info
+    }
+    
+    # Get Store/UWP apps
+    if (-not $Win32Only) {
+        Write-Log "Scanning for Store/UWP applications..." -Level Info
+        
+        $storeApps = Get-AppxPackage -AllUsers | 
+        Where-Object { 
+            $_.Name -and 
+            ($IncludeUpdates -or $_.Name -notlike "*Update*")
+        } |
+        ForEach-Object {
+            [PSCustomObject]@{
+                Name = $_.Name
+                Version = $_.Version
+                Publisher = $_.Publisher
+                InstallDate = if ($_.InstallDate) {
+                    $_.InstallDate.ToString("yyyy-MM-dd")
+                } else { $null }
+                Type = "Store"
+                Location = $_.InstallLocation
+            }
+        }
+        
+        $allSoftware += $storeApps
+        Write-Log "Found $($storeApps.Count) Store applications" -Level Info
+    }
+    
+    # Remove duplicates
+    $allSoftware = $allSoftware | Sort-Object Name, Version -Unique
+    
+    Write-Log "Total unique applications: $($allSoftware.Count)" -Level Success
+    
+    # Export or display
+    if ($ExportPath) {
+        $allSoftware | Export-Csv -Path $ExportPath -NoTypeInformation -Encoding UTF8
+        Write-Log "Exported to: $ExportPath" -Level Success
+    } else {
+        # Display summary
+        $summary = $allSoftware | Group-Object Type | Select-Object Name, Count
+        Write-Host "`nSummary:" -ForegroundColor Cyan
+        $summary | Format-Table -AutoSize
+        
+        # Display apps
+        Write-Host "`nInstalled Software:" -ForegroundColor Cyan
+        $allSoftware | Sort-Object Type, Name | Format-Table Name, Version, Publisher, Type -AutoSize
+    }
+    
+    # Return for pipeline
+    return $allSoftware
+    
+} catch {
+    Write-Log "Error: $_" -Level Error
+} finally {
+    if ($useCustomFunctions -and -not $SkipLogging) {
+        Stop-Logging
+    }
+}

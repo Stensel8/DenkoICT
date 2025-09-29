@@ -13,7 +13,10 @@
 .RELEASENOTES
 [Version 1.0.0] - Initial Release. Gets serial number and formats as PC name.
 [Version 1.0.1] - Improved error handling and logging using try/catch.
+[Version 1.0.2] - Changed naming conventions of script.
 #>
+
+#requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -24,12 +27,12 @@
     prefixed with 'PC-' to create a standardized computer name following Denko ICT naming convention.
 
 .EXAMPLE
-    .\ps_Get-Serial.ps1
+    .\ps_Get-SerialNumber.ps1
     
     Returns the formatted PC name, e.g., "PC-1234" based on serial number.
 
 .EXAMPLE
-    $computerName = & .\ps_Get-Serial.ps1
+    $computerName = & .\ps_Get-SerialNumber.ps1
     Rename-Computer -NewName $computerName -Force
     
     Stores the generated name and uses it to rename the computer.

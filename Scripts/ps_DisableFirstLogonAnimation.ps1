@@ -2,8 +2,6 @@
 
 .VERSION 1.1.0
 
-.GUID 6dbe7aa1-2cc8-410d-9be9-7b3453b9a0f5
-
 .AUTHOR Sten Tijhuis
 
 .COMPANYNAME Denko ICT
@@ -13,8 +11,8 @@
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
 .RELEASENOTES
-[Version 1.1.0] - Added script metadata, administrative validation, and WhatIf support.
 [Version 1.0.0] - Initial script to disable the first logon animation.
+[Version 1.1.0] - Added script metadata, administrative validation, and WhatIf support.
 #>
 
 #requires -Version 5.1
@@ -46,7 +44,7 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'ps_Invoke-AdminToolkit.ps1'
+$commonModule = Join-Path -Path $PSScriptRoot -ChildPath 'ps_Custom-Functions.ps1'
 if (-not (Test-Path -Path $commonModule)) {
     throw "Unable to locate shared helper module at $commonModule"
 }

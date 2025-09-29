@@ -77,28 +77,6 @@ $script:LogDirectory = Join-Path $env:ProgramData 'DenkoICT\Logs'
 $script:TranscriptPath = $null
 $script:TranscriptStarted = $false
 
-function Write-ColorOutput {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-
-        [Parameter()]
-        [ValidateSet('Info', 'Success', 'Warning', 'Error', 'Verbose')]
-        [string]$Level = 'Info'
-    )
-
-    $color = switch ($Level) {
-        'Success' { 'Green' }
-        'Warning' { 'Yellow' }
-        'Error'   { 'Red' }
-        'Verbose' { 'Cyan' }
-        default   { 'White' }
-    }
-
-    Write-Host $Message -ForegroundColor $color
-}
-
 function Write-Log {
     [CmdletBinding()]
     param(
@@ -113,15 +91,7 @@ function Write-Log {
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $formattedMessage = "[$timestamp] [$Level] $Message"
 
-    $colorLevel = switch ($Level) {
-        'SUCCESS' { 'Success' }
-        'WARN'    { 'Warning' }
-        'ERROR'   { 'Error' }
-        'VERBOSE' { 'Verbose' }
-        default   { 'Info' }
-    }
-
-    Write-ColorOutput -Message $formattedMessage -Level $colorLevel
+    Write-Output $formattedMessage
 }
 
 function Assert-Administrator {
@@ -135,7 +105,7 @@ function Assert-Administrator {
         throw 'This script requires administrative privileges. Please run in an elevated PowerShell session.'
     }
 
-    Write-Verbose 'Administrative privileges confirmed.'
+    Write-Output 'VERBOSE: Administrative privileges confirmed.'
 }
 
 function Initialize-Logging {
@@ -154,7 +124,7 @@ function Initialize-Logging {
         $script:TranscriptStarted = $true
     } catch {
         $script:TranscriptPath = $null
-        Write-ColorOutput -Message "Failed to start transcript logging: $_" -Level 'Warning'
+    Write-Output "WARNING: Failed to start transcript logging: $_"
     }
 
     if ($script:TranscriptPath) {
@@ -180,7 +150,7 @@ function Get-RemoteScript {
     try {
         Write-Log -Message "Downloading ${ScriptName}..." -Level 'INFO'
         Invoke-WebRequest -Uri "$ScriptBaseUrl/$ScriptName" -OutFile $localPath -UseBasicParsing
-    Write-Log -Message "Downloaded ${ScriptName} to ${localPath}" -Level 'SUCCESS'
+        Write-Log -Message "Downloaded ${ScriptName} to ${localPath}" -Level 'SUCCESS'
         return $localPath
     } catch {
         Write-Log -Message "Failed to download ${ScriptName}: $($_)" -Level 'ERROR'
@@ -261,7 +231,7 @@ function Invoke-DeploymentStep {
             return $false
         }
 
-    Write-Log -Message "Completed: ${DisplayName}" -Level 'SUCCESS'
+        Write-Log -Message "Completed: ${DisplayName}" -Level 'SUCCESS'
         return $true
     } catch {
         Write-Log -Message "Failed: ${DisplayName} - $($_)" -Level 'ERROR'
@@ -353,7 +323,7 @@ try {
         Write-Log -Message ("Log file: {0}" -f $script:TranscriptPath) -Level 'INFO'
     }
 
-    Write-ColorOutput -Message "`nDeployment finished. Press any key to exit..." -Level 'Info'
+    Write-Output "`nDeployment finished. Press any key to exit..."
     [void][System.Console]::ReadKey($true)
 
     if ($deploymentResult.Failed -gt 0) {
@@ -362,14 +332,14 @@ try {
         exit 0
     }
 } catch {
-        Write-Log -Message "Deployment halted due to unexpected error: $($_)" -Level 'ERROR'
+    Write-Log -Message "Deployment halted due to unexpected error: $($_)" -Level 'ERROR'
     exit 1
 } finally {
     if ($script:TranscriptStarted) {
         try {
             Stop-Transcript | Out-Null
         } catch {
-            Write-ColorOutput -Message "Failed to stop transcript: $_" -Level 'Warning'
+            Write-Output "WARNING: Failed to stop transcript: $_"
         }
     }
 }
