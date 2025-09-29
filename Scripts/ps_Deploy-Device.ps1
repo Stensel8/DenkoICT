@@ -73,7 +73,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:LogDirectory = Join-Path $env:ProgramData 'DenkoICT\Logs'
+$script:LogDirectory = 'C:\DenkoICT\Logs'
 $script:TranscriptPath = $null
 $script:TranscriptStarted = $false
 
