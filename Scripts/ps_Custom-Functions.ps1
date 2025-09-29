@@ -302,6 +302,3 @@ function Invoke-WithRetry {
         }
     }
 }
-
-# Export module members
-Export-ModuleMember -Function * -Variable DenkoConfig

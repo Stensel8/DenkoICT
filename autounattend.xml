@@ -242,7 +242,7 @@ Set-StrictMode -Version 'Latest';
 		}
 		Start-Sleep -Milliseconds 50;
 	}
-} *&gt;&amp;1 &gt;&gt; 'C:\DenkoICT\Logs\SetComputerName.log';
+} *&gt;&amp;1 &gt;&gt; 'C:\Windows\Setup\Scripts\SetComputerName.log';
 		</File>
 		<File path="C:\Windows\Setup\Scripts\RemovePackages.ps1">
 $selectors = @(
@@ -296,7 +296,7 @@ $removeCommand = {
   }
 };
 $type = 'Package';
-$logfile = 'C:\DenkoICT\Logs\RemovePackages.log';
+$logfile = 'C:\Windows\Setup\Scripts\RemovePackages.log';
 &amp; {
 	$installed = &amp; $getCommand;
 	foreach( $selector in $selectors ) {
@@ -349,7 +349,7 @@ $removeCommand = {
   }
 };
 $type = 'Capability';
-$logfile = 'C:\DenkoICT\Logs\RemoveCapabilities.log';
+$logfile = 'C:\Windows\Setup\Scripts\RemoveCapabilities.log';
 &amp; {
 	$installed = &amp; $getCommand;
 	foreach( $selector in $selectors ) {
@@ -398,7 +398,7 @@ $removeCommand = {
   }
 };
 $type = 'Feature';
-$logfile = 'C:\DenkoICT\Logs\RemoveFeatures.log';
+$logfile = 'C:\Windows\Setup\Scripts\RemoveFeatures.log';
 &amp; {
 	$installed = &amp; $getCommand;
 	foreach( $selector in $selectors ) {
@@ -508,7 +508,7 @@ $htmlAccentColor = '#0078D4';
 };
 		</File>
 		<File path="C:\Windows\Setup\Scripts\unattend-01.ps1">
-Write-Output "Customizing your device. Please wait..."
+Write-Host "Customizing your device. Please wait..." -ForegroundColor Cyan
 Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Deploy-Device.ps1' | iex`"" -Wait
 		</File>
 		<File path="C:\Windows\Setup\Scripts\Specialize.ps1">
@@ -586,7 +586,7 @@ $scripts = @(
     "`r`n" * 3;
     $complete += $increment;
   }
-} *&gt;&amp;1 &gt;&gt; "C:\DenkoICT\Logs\Specialize.log";
+} *&gt;&amp;1 &gt;&gt; "C:\Windows\Setup\Scripts\Specialize.log";
 		</File>
 		<File path="C:\Windows\Setup\Scripts\UserOnce.ps1">
 $scripts = @(
@@ -662,7 +662,7 @@ $scripts = @(
     "`r`n" * 3;
     $complete += $increment;
   }
-} *&gt;&amp;1 &gt;&gt; "C:\DenkoICT\Logs\UserOnce.log";
+} *&gt;&amp;1 &gt;&gt; "$env:TEMP\UserOnce.log";
 		</File>
 		<File path="C:\Windows\Setup\Scripts\DefaultUser.ps1">
 $scripts = @(
@@ -743,7 +743,7 @@ $scripts = @(
     "`r`n" * 3;
     $complete += $increment;
   }
-} *&gt;&amp;1 &gt;&gt; "C:\DenkoICT\Logs\DefaultUser.log";
+} *&gt;&amp;1 &gt;&gt; "C:\Windows\Setup\Scripts\DefaultUser.log";
 		</File>
 		<File path="C:\Windows\Setup\Scripts\FirstLogon.ps1">
 $scripts = @(
@@ -778,7 +778,7 @@ $scripts = @(
     "`r`n" * 3;
     $complete += $increment;
   }
-} *&gt;&amp;1 &gt;&gt; "C:\DenkoICT\Logs\FirstLogon.log";
+} *&gt;&amp;1 &gt;&gt; "C:\Windows\Setup\Scripts\FirstLogon.log";
 		</File>
 	</Extensions>
 </unattend>

@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.0.2
+.VERSION 1.2.0
 
 .AUTHOR Sten Tijhuis
 
@@ -14,6 +14,8 @@
 [Version 1.0.0] - Initial Release. Simple orchestrator for device provisioning.
 [Version 1.0.1] - Added basic logging and remote download support.
 [Version 1.0.2] - Aligned with better standards, improved error handling, and admin validation.
+[Version 1.1.0] - Improved external log collection.
+[Version 1.2.0] - Enforces C:\DenkoICT\Logs for all logging, uses Bitstransfer for downloads, forces custom-functions download.
 #>
 
 #requires -Version 5.1
@@ -24,322 +26,252 @@
     Orchestrates Denko ICT device deployment by running child scripts in sequence.
 
 .DESCRIPTION
-    Downloads or resolves required deployment scripts, executes them in a predefined order,
-    and provides consistent logging via both console output and transcript files. Designed to be
-    used during device provisioning either with local copies of scripts or remote downloads.
-
-.PARAMETER ScriptBaseUrl
-    The base URL where remote deployment scripts are hosted. Used when -UseLocal is not specified.
-
-.PARAMETER UseLocal
-    Switch to force execution of scripts from the local repository instead of downloading them.
-
-.EXAMPLE
-    .\ps_Deploy-Device.ps1
-
-    Runs the deployment workflow by downloading the latest scripts from the repository.
-
-.EXAMPLE
-    .\ps_Deploy-Device.ps1 -UseLocal
-
-    Runs the deployment workflow using scripts located alongside this orchestrator.
-
-.INPUTS
-    None. This script does not accept pipeline input.
-
-.OUTPUTS
-    None. Writes status information to the console and transcript log.
-
-.NOTES
-    Version      : 1.0.2
-    Created by   : Sten Tijhuis
-    Company      : Denko ICT
-    Requires administrative privileges to execute successfully.
-
-.LINK
-    Project Site: https://github.com/Stensel8/DenkoICT
+    Always downloads custom functions. All logs and transcripts go to C:\DenkoICT\Logs. Uses Bitstransfer for remote downloads.
 #>
 
 [CmdletBinding()]
-param(
+param (
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
-    [string]$ScriptBaseUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/main/Scripts",
-
-    [Parameter(Mandatory = $false)]
-    [switch]$UseLocal
+    [string]$ScriptBaseUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts"
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-$script:LogDirectory = Join-Path $env:ProgramData 'DenkoICT\Logs'
+$script:LogDirectory = 'C:\DenkoICT\Logs'
 $script:TranscriptPath = $null
 $script:TranscriptStarted = $false
 
+function Write-ColorOutput {
+    param([string]$Message,[string]$Level="Info")
+    $color = switch ($Level) {
+        "Success" {"Green"}
+        "Warning" {"Yellow"}
+        "Error"   {"Red"}
+        "Verbose" {"Cyan"}
+        Default   {"White"}
+    }
+    Write-Host $Message -ForegroundColor $color
+}
+
 function Write-Log {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-
-        [Parameter()]
-        [ValidateSet('INFO', 'SUCCESS', 'WARN', 'ERROR', 'VERBOSE')]
-        [string]$Level = 'INFO'
-    )
-
+    param([string]$Message,[string]$Level="INFO")
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $formattedMessage = "[$timestamp] [$Level] $Message"
-
-    Write-Output $formattedMessage
+    $colorLevel = switch ($Level) {
+        "SUCCESS" {"Success"}
+        "WARN"    {"Warning"}
+        "ERROR"   {"Error"}
+        "VERBOSE" {"Verbose"}
+        Default   {"Info"}
+    }
+    Write-ColorOutput -Message $formattedMessage -Level $colorLevel
 }
 
 function Assert-Administrator {
-    [CmdletBinding()]
-    param()
-
     $identity  = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'This script requires administrative privileges. Please run in an elevated PowerShell session.'
+        throw "Script requires administrator privileges."
     }
-
-    Write-Output 'VERBOSE: Administrative privileges confirmed.'
+    Write-Log "Administrator privileges confirmed." "VERBOSE"
 }
 
 function Initialize-Logging {
-    [CmdletBinding()]
-    param()
-
-    if (-not (Test-Path -Path $script:LogDirectory)) {
+    if (-not (Test-Path $script:LogDirectory)) {
         New-Item -Path $script:LogDirectory -ItemType Directory -Force | Out-Null
     }
-
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $script:TranscriptPath = Join-Path $script:LogDirectory "Deployment-$timestamp.log"
-
     try {
         Start-Transcript -Path $script:TranscriptPath -Force | Out-Null
         $script:TranscriptStarted = $true
     } catch {
         $script:TranscriptPath = $null
-    Write-Output "WARNING: Failed to start transcript logging: $_"
+        Write-Log "Transcript logging not started: $_" "WARN"
     }
+    Write-Log "Transcript logging path: ${script:TranscriptPath}" "INFO"
+}
 
-    if ($script:TranscriptPath) {
-    Write-Log -Message "Transcript logging to ${script:TranscriptPath}" -Level 'INFO'
+function Download-RemoteScript {
+    param([string]$ScriptUrl,[string]$SavePath)
+    try {
+        Import-Module BitsTransfer -ErrorAction SilentlyContinue
+        Start-BitsTransfer -Source $ScriptUrl -Destination $SavePath -ErrorAction Stop
+        Write-Log "Downloaded via BitsTransfer: $ScriptUrl > $SavePath" "SUCCESS"
+    } catch {
+        Write-Log "BitsTransfer failed, falling back to Invoke-WebRequest..." "WARN"
+        try {
+            Invoke-WebRequest -Uri $ScriptUrl -OutFile $SavePath -UseBasicParsing -ErrorAction Stop
+            Write-Log "Downloaded via WebRequest: $ScriptUrl > $SavePath" "SUCCESS"
+        } catch {
+            Write-Log "Download failed: $ScriptUrl ($_) " "ERROR"
+            throw
+        }
     }
 }
 
 function Get-RemoteScript {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$ScriptName
-    )
-
+    param([string]$ScriptName)
+    $url = "$ScriptBaseUrl/$ScriptName"
     $localPath = Join-Path $env:TEMP "DenkoICT\$ScriptName"
     $localDir = Split-Path -Path $localPath -Parent
-
     if (-not (Test-Path -Path $localDir)) {
         New-Item -Path $localDir -ItemType Directory -Force | Out-Null
     }
-
-    try {
-        Write-Log -Message "Downloading ${ScriptName}..." -Level 'INFO'
-        Invoke-WebRequest -Uri "$ScriptBaseUrl/$ScriptName" -OutFile $localPath -UseBasicParsing
-        Write-Log -Message "Downloaded ${ScriptName} to ${localPath}" -Level 'SUCCESS'
-        return $localPath
-    } catch {
-        Write-Log -Message "Failed to download ${ScriptName}: $($_)" -Level 'ERROR'
-        throw
-    }
+    Download-RemoteScript -ScriptUrl $url -SavePath $localPath
+    return $localPath
 }
 
-function Resolve-LocalScript {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$ScriptName
-    )
-
-    $scriptDirectory = Split-Path -Parent $MyInvocation.PSCommandPath
-    $scriptPath = Join-Path $scriptDirectory $ScriptName
-
-    if (-not (Test-Path -Path $scriptPath)) {
-        throw "Local script not found: $scriptPath"
-    }
-
-    return $scriptPath
+function Import-CustomFunctions {
+    $customFunctionsUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Custom-Functions.ps1"
+    $target = Join-Path $env:TEMP "DenkoICT\ps_Custom-Functions.ps1"
+    Download-RemoteScript -ScriptUrl $customFunctionsUrl -SavePath $target
+    . $target
+    Write-Log "Custom functions imported from $customFunctionsUrl" "INFO"
 }
 
 function Set-WinGetSessionDefaults {
-    [CmdletBinding()]
-    param()
-
     $wingetVariables = @{
-        Debug                  = $false
-        ForceClose             = $false
-        Force                  = $false
+        Debug = $false
+        ForceClose = $false
+        Force = $false
         AlternateInstallMethod = $false
     }
-
-    foreach ($variable in $wingetVariables.GetEnumerator()) {
-        if (-not (Get-Variable -Name $variable.Key -Scope Global -ErrorAction SilentlyContinue)) {
-            New-Variable -Name $variable.Key -Value $variable.Value -Scope Global | Out-Null
+    foreach ($variable in $wingetVariables.Keys) {
+        if (-not (Get-Variable -Name $variable -Scope Global -ErrorAction SilentlyContinue)) {
+            New-Variable -Name $variable -Value $wingetVariables[$variable] -Scope Global | Out-Null
         }
     }
 }
 
 function Invoke-DeploymentStep {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$ScriptName,
-
-        [Parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$DisplayName,
-
-        [Parameter()]
-        [hashtable]$ScriptParameters
-    )
-
-    Write-Log -Message "Starting: ${DisplayName}" -Level 'INFO'
-
+    param([string]$ScriptName,[string]$DisplayName,[hashtable]$ScriptParameters)
+    Write-Log "Start: ${DisplayName}" "INFO"
     try {
-        $scriptPath = if ($UseLocal) {
-            Resolve-LocalScript -ScriptName $ScriptName
-        } else {
-            Get-RemoteScript -ScriptName $ScriptName
-        }
-
+        $scriptPath = Get-RemoteScript -ScriptName $ScriptName
         Set-Variable -Name 'LASTEXITCODE' -Scope Global -Value 0 -Force
-
         if ($ScriptParameters -and $ScriptParameters.Count -gt 0) {
             & $scriptPath @ScriptParameters
         } else {
             & $scriptPath
         }
-
         if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-            Write-Log -Message "Script returned exit code: $LASTEXITCODE" -Level 'WARN'
+            Write-Log "Script exit code: $LASTEXITCODE" "WARN"
             return $false
         }
-
-        Write-Log -Message "Completed: ${DisplayName}" -Level 'SUCCESS'
+        Write-Log "Completed: ${DisplayName}" "SUCCESS"
         return $true
     } catch {
-        Write-Log -Message "Failed: ${DisplayName} - $($_)" -Level 'ERROR'
+        Write-Log "Failed: ${DisplayName} - $($_)" "ERROR"
         return $false
     }
 }
 
 function Invoke-Deployment {
-    [CmdletBinding()]
-    param()
-
     $deploymentSteps = @(
-        @{ Script = 'ps_Install-Winget.ps1'; Name = 'WinGet Installation' },
+        @{ Script = 'ps_Install-Winget.ps1'; Name = 'WinGet installation' },
         @{ Script = 'ps_Install-Drivers.ps1'; Name = 'Driver Updates' },
-        @{ Script = 'ps_Install-Applications.ps1'; Name = 'Application Installation' },
-        @{ Script = 'ps_Set-Wallpaper.ps1'; Name = 'Wallpaper Configuration' }
+        @{ Script = 'ps_Install-Applications.ps1'; Name = 'Application installation' },
+        @{ Script = 'ps_Set-Wallpaper.ps1'; Name = 'Wallpaper configuration' }
     )
-
-    $result = [pscustomobject]@{
-        Success = 0
-        Failed  = 0
-    }
-
+    $result = [pscustomobject]@{ Success = 0; Failed = 0 }
     Set-WinGetSessionDefaults
-
     $wingetSucceeded = $false
-
     foreach ($step in $deploymentSteps) {
         $parameters = if ($step.ContainsKey('Parameters')) { $step.Parameters } else { $null }
-
         if ($step.Script -eq 'ps_Install-Winget.ps1') {
             $wingetSucceeded = Invoke-DeploymentStep -ScriptName $step.Script -DisplayName $step.Name -ScriptParameters $parameters
-
             if (-not $wingetSucceeded) {
-                Write-Log -Message 'WinGet installation failed. Retrying with alternate install method...' -Level 'WARN'
-                $alternateVariable = Get-Variable -Name 'AlternateInstallMethod' -Scope Global -ErrorAction SilentlyContinue
-                $originalAlternate = if ($null -ne $alternateVariable) { $alternateVariable.Value } else { $false }
-                try {
-                    Set-Variable -Name 'AlternateInstallMethod' -Scope Global -Value $true -Force
-                    $wingetSucceeded = Invoke-DeploymentStep -ScriptName $step.Script -DisplayName 'WinGet Installation (Alternate Method)' -ScriptParameters $parameters
-                } finally {
-                    $restoreValue = if ($null -ne $originalAlternate) { $originalAlternate } else { $false }
-                    Set-Variable -Name 'AlternateInstallMethod' -Scope Global -Value $restoreValue -Force
-                }
+                Write-Log "WinGet installation failed. Attempting alternative method..." "WARN"
+                Set-Variable -Name 'AlternateInstallMethod' -Scope Global -Value $true -Force
+                $wingetSucceeded = Invoke-DeploymentStep -ScriptName $step.Script -DisplayName 'WinGet installation (alternative)' -ScriptParameters $parameters
+                Set-Variable -Name 'AlternateInstallMethod' -Scope Global -Value $false -Force
             }
-
-            if ($wingetSucceeded) {
-                $result.Success++
-            } else {
-                $result.Failed++
-                Write-Log -Message 'Continuing despite error...' -Level 'WARN'
-            }
-
+            if ($wingetSucceeded) { $result.Success++ } else { $result.Failed++ }
             continue
         }
-
         if ($step.Script -eq 'ps_Install-Applications.ps1' -and -not $wingetSucceeded) {
-            Write-Log -Message 'Skipping Application Installation because WinGet is unavailable.' -Level 'WARN'
+            Write-Log "Application installation skipped; WinGet not available." "WARN"
             $result.Failed++
             continue
         }
-
         if (Invoke-DeploymentStep -ScriptName $step.Script -DisplayName $step.Name -ScriptParameters $parameters) {
             $result.Success++
         } else {
             $result.Failed++
-            Write-Log -Message 'Continuing despite error...' -Level 'WARN'
+            Write-Log "Continuing despite error..." "WARN"
         }
     }
-
     return $result
+}
+
+function Copy-ExternalLogs {
+    if (-not $script:LogDirectory) {
+        Write-Log "Log directory not defined. Skipping external logs." "WARN"
+        return
+    }
+    if (-not (Test-Path -Path $script:LogDirectory)) {
+        try { New-Item -Path $script:LogDirectory -ItemType Directory -Force | Out-Null }
+        catch { Write-Log "Failed to create log directory: $_" "WARN"; return }
+    }
+    $logPaths = @(
+        'C:\Windows\Setup\Scripts\SetComputerName.log'
+        'C:\Windows\Setup\Scripts\RemovePackages.log'
+        'C:\Windows\Setup\Scripts\RemoveCapabilities.log'
+        'C:\Windows\Setup\Scripts\RemoveFeatures.log'
+        'C:\Windows\Setup\Scripts\Specialize.log'
+        (Join-Path $env:TEMP 'UserOnce.log')
+        'C:\Windows\Setup\Scripts\DefaultUser.log'
+        'C:\Windows\Setup\Scripts\FirstLogon.log'
+    )
+    $collected = 0
+    foreach ($path in ($logPaths | Sort-Object -Unique)) {
+        if (-not $path -or -not (Test-Path -Path $path -PathType Leaf)) {
+            Write-Log "External log not found: '$path'" "VERBOSE"
+            continue
+        }
+        try {
+            $item = Get-Item -Path $path -ErrorAction Stop
+            $destination = Join-Path $script:LogDirectory $item.Name
+            if (Test-Path -Path $destination) {
+                $baseName = [System.IO.Path]::GetFileNameWithoutExtension($item.Name)
+                $extension = [System.IO.Path]::GetExtension($item.Name)
+                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+                $destination = Join-Path $script:LogDirectory ("{0}-{1}{2}" -f $baseName, $timestamp, $extension)
+            }
+            Copy-Item -Path $item.FullName -Destination $destination -Force
+            $collected++
+            Write-Log "Copied log '$($item.FullName)' to '$destination'" "VERBOSE"
+        } catch {
+            Write-Log "Failed to copy log '$($item.FullName)': $_" "WARN"
+        }
+    }
+    if ($collected -gt 0) {
+        Write-Log "Copied $collected external log(s) to $script:LogDirectory" "INFO"
+    } else {
+        Write-Log "No external logs found to copy." "VERBOSE"
+    }
 }
 
 try {
     Assert-Administrator
-
     Initialize-Logging
-
-    Write-Log -Message '=== Denko ICT Device Deployment Started ===' -Level 'INFO'
-    $mode = if ($UseLocal) { 'Local' } else { 'Remote' }
-    Write-Log -Message ("Mode: {0}" -f $mode) -Level 'INFO'
-
+    Import-CustomFunctions
+    Write-Log "=== Denko ICT Device Deployment Started ===" "INFO"
     $deploymentResult = Invoke-Deployment
-
-    Write-Log -Message '=== Deployment Complete ===' -Level 'INFO'
-    Write-Log -Message ("Successful: {0} | Failed: {1}" -f $deploymentResult.Success, $deploymentResult.Failed) -Level 'INFO'
-
-    if ($script:TranscriptPath) {
-        Write-Log -Message ("Log file: {0}" -f $script:TranscriptPath) -Level 'INFO'
-    }
-
-    Write-Output "`nDeployment finished. Press any key to exit..."
+    Write-Log "=== Deployment Complete ===" "INFO"
+    Write-Log "Successful: $($deploymentResult.Success) | Failed: $($deploymentResult.Failed)" "INFO"
+    Write-Log "Log file: $script:TranscriptPath" "INFO"
+    Write-ColorOutput "`nDeployment finished. Press any key to exit..." "Info"
     [void][System.Console]::ReadKey($true)
-
-    if ($deploymentResult.Failed -gt 0) {
-        exit 1
-    } else {
-        exit 0
-    }
+    if ($deploymentResult.Failed -gt 0) { exit 1 } else { exit 0 }
 } catch {
-    Write-Log -Message "Deployment halted due to unexpected error: $($_)" -Level 'ERROR'
+    Write-Log "Deployment aborted due to an unexpected error: $($_)" "ERROR"
     exit 1
 } finally {
+    try { Copy-ExternalLogs } catch { Write-Log "Failed to collect external logs: $_" "WARN" }
     if ($script:TranscriptStarted) {
-        try {
-            Stop-Transcript | Out-Null
-        } catch {
-            Write-Output "WARNING: Failed to stop transcript: $_"
-        }
+        try { Stop-Transcript | Out-Null } catch { Write-Log "Failed to stop transcript: $_" "WARN" }
     }
 }
