@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.0.3
+.VERSION 1.0.4
 
 .AUTHOR Sten Tijhuis
 
@@ -15,6 +15,7 @@
 [Version 1.0.1] - Improved error handling and logging.
 [Version 1.0.2] - Removed Lenovo and Asus support due to lack of reliable tools.
 [Version 1.0.3] - Fixed a bug regarding HP CMSL installation.
+[Version 1.0.4] - Fixed PowerShellGet update logic and HP CMSL installation flow.
 #>
 
 <#
@@ -60,7 +61,7 @@
     Log files in C:\DenkoICT\Logs\Drivers\
 
 .NOTES
-    Version      : 1.0.3
+    Version      : 1.0.4
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     
@@ -380,31 +381,42 @@ function Install-HPCMSLModule {
         return $true
     }
 
-    Write-Host "HP CMSL not found locally. Attempting installation from PowerShell Gallery..." -ForegroundColor Gray
+    Write-Host "HP CMSL not found locally. Updating PowerShell prerequisites first..." -ForegroundColor Gray
 
-    $galleryInstalled = $false
+    # CRITICAL: Update PowerShellGet BEFORE attempting to install HPCMSL
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+        # Install/Update NuGet provider
         if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
-            Write-Host "  Installing NuGet package provider" -ForegroundColor Gray
+            Write-Host "  Installing NuGet package provider..." -ForegroundColor Gray
             Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -Confirm:$false -ErrorAction Stop
         }
 
-        $psget = Get-Module -ListAvailable -Name PowerShellGet -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
-        if (-not $psget -or $psget.Version -lt [Version]'2.2.5') {
-            Write-Host "  Updating PowerShellGet to latest available version" -ForegroundColor Gray
-            Install-Module -Name PowerShellGet -Force -Scope CurrentUser -AllowClobber -Confirm:$false -ErrorAction Stop
-        }
+        # Update PowerShellGet to latest version
+        Write-Host "  Updating PowerShellGet to latest version..." -ForegroundColor Gray
+        Install-Module -Name PowerShellGet -MinimumVersion 2.2.5 -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -Confirm:$false -ErrorAction SilentlyContinue
+        
+        # Import the new PowerShellGet
+        Remove-Module PowerShellGet -Force -ErrorAction SilentlyContinue
+        Import-Module PowerShellGet -MinimumVersion 2.2.5 -Force -ErrorAction SilentlyContinue
+        
+        # Update PackageManagement
+        Write-Host "  Updating PackageManagement module..." -ForegroundColor Gray
+        Install-Module -Name PackageManagement -MinimumVersion 1.4.8 -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -Confirm:$false -ErrorAction SilentlyContinue
 
-        $pkgMgmt = Get-Module -ListAvailable -Name PackageManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
-        if (-not $pkgMgmt -or $pkgMgmt.Version -lt [Version]'1.4.8') {
-            Write-Host "  Updating PackageManagement module" -ForegroundColor Gray
-            Install-Module -Name PackageManagement -Force -Scope CurrentUser -AllowClobber -Confirm:$false -ErrorAction Stop
-        }
+        Write-Host "  PowerShell package management updated successfully" -ForegroundColor Green
+    } catch {
+        Write-Warning "  Failed to update PowerShell package management: $($_.Exception.Message)"
+    }
 
+    # Now try to install HPCMSL from gallery
+    Write-Host "Attempting to install HP CMSL from PowerShell Gallery..." -ForegroundColor Gray
+    $galleryInstalled = $false
+    try {
         Install-Module -Name HPCMSL -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -Confirm:$false -ErrorAction Stop
         $galleryInstalled = $true
+        Write-Host "  HP CMSL installed successfully from PowerShell Gallery" -ForegroundColor Green
     } catch {
         Write-Warning "  PowerShell Gallery installation failed: $($_.Exception.Message)"
     }
@@ -421,10 +433,13 @@ function Install-HPCMSLModule {
         }
     }
 
+    # Refresh module list
+    Get-Module -ListAvailable -Refresh -ErrorAction SilentlyContinue | Out-Null
+    
     $refreshed = Get-Module -ListAvailable -Name 'HPCMSL' -ErrorAction SilentlyContinue
     if ($refreshed) {
         $latest = $refreshed | Sort-Object Version -Descending | Select-Object -First 1
-        Write-Host "  HP CMSL module available (version: $($latest.Version))" -ForegroundColor Gray
+        Write-Host "  HP CMSL module available (version: $($latest.Version))" -ForegroundColor Green
     } else {
         Write-Warning "  HP CMSL module still not detected after installation attempts"
     }
@@ -579,7 +594,7 @@ function Update-HPDrivers {
         # If HPIA fails, try HP CMSL with simplified approach
         Write-Host "Falling back to HP CMSL method..." -ForegroundColor Cyan
         
-        # Ensure HP CMSL is available, attempting automatic installation if required
+        # FIXED: Use the Install-HPCMSLModule function which properly updates PowerShellGet first
         $hpModules = Get-Module -ListAvailable -Name 'HPCMSL' -ErrorAction SilentlyContinue
         if (-not $hpModules) {
             Write-Host "HP CMSL not installed. Attempting automatic deployment..." -ForegroundColor Cyan
@@ -588,12 +603,13 @@ function Update-HPDrivers {
                 Write-Host "Skipping HP driver updates - please install HP CMSL manually or check network connectivity" -ForegroundColor Yellow
                 return
             }
-            Write-Host "HP CMSL installed successfully" -ForegroundColor Green
         }
         
         # Import HP CMSL module
         try {
             Write-Host "Loading HP CMSL module..." -ForegroundColor Cyan
+            # Remove and re-import to ensure fresh load
+            Remove-Module HPCMSL -Force -ErrorAction SilentlyContinue
             Import-Module HPCMSL -Force -ErrorAction Stop
             Write-Host "  [OK] HPCMSL module loaded successfully" -ForegroundColor Green
         } catch {
