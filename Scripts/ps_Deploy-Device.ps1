@@ -6,7 +6,7 @@
 
 .COMPANYNAME Denko ICT
 
-.TAGS PowerShell Windows Deployment Automation Logging
+.TAGS PowerShell Windows Deployment Logging
 
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
@@ -16,6 +16,7 @@
 [Version 1.0.2] - Aligned with better standards, improved error handling, and admin validation.
 [Version 1.1.0] - Improved external log collection.
 [Version 1.2.0] - Enforces C:\DenkoICT\Logs for all logging, uses Bitstransfer for downloads, forces custom-functions download.
+[Version 1.2.2] - Enforces C:\DenkoICT\Download for all downloads.
 #>
 
 #requires -Version 5.1
@@ -39,6 +40,7 @@ param (
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:LogDirectory = 'C:\DenkoICT\Logs'
+$script:DownloadDirectory = 'C:\DenkoICT\Download'
 $script:TranscriptPath = $null
 $script:TranscriptStarted = $false
 
@@ -77,10 +79,18 @@ function Assert-Administrator {
     Write-Log "Administrator privileges confirmed." "VERBOSE"
 }
 
-function Initialize-Logging {
+function Initialize-Directories {
     if (-not (Test-Path $script:LogDirectory)) {
         New-Item -Path $script:LogDirectory -ItemType Directory -Force | Out-Null
+        Write-Log "Created log directory: $script:LogDirectory" "VERBOSE"
     }
+    if (-not (Test-Path $script:DownloadDirectory)) {
+        New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
+        Write-Log "Created download directory: $script:DownloadDirectory" "VERBOSE"
+    }
+}
+
+function Initialize-Logging {
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $script:TranscriptPath = Join-Path $script:LogDirectory "Deployment-$timestamp.log"
     try {
@@ -93,8 +103,16 @@ function Initialize-Logging {
     Write-Log "Transcript logging path: ${script:TranscriptPath}" "INFO"
 }
 
-function Download-RemoteScript {
+function Get-RemoteScript {
     param([string]$ScriptUrl,[string]$SavePath)
+    
+    # Ensure the directory exists
+    $directory = Split-Path $SavePath -Parent
+    if (-not (Test-Path $directory)) {
+        New-Item -Path $directory -ItemType Directory -Force | Out-Null
+        Write-Log "Created directory: $directory" "VERBOSE"
+    }
+    
     try {
         Import-Module BitsTransfer -ErrorAction SilentlyContinue
         Start-BitsTransfer -Source $ScriptUrl -Destination $SavePath -ErrorAction Stop
@@ -111,22 +129,18 @@ function Download-RemoteScript {
     }
 }
 
-function Get-RemoteScript {
+function Get-Script {
     param([string]$ScriptName)
     $url = "$ScriptBaseUrl/$ScriptName"
-    $localPath = Join-Path $env:TEMP "DenkoICT\$ScriptName"
-    $localDir = Split-Path -Path $localPath -Parent
-    if (-not (Test-Path -Path $localDir)) {
-        New-Item -Path $localDir -ItemType Directory -Force | Out-Null
-    }
-    Download-RemoteScript -ScriptUrl $url -SavePath $localPath
+    $localPath = Join-Path $script:DownloadDirectory $ScriptName
+    Get-RemoteScript -ScriptUrl $url -SavePath $localPath
     return $localPath
 }
 
 function Import-CustomFunctions {
     $customFunctionsUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Custom-Functions.ps1"
-    $target = Join-Path $env:TEMP "DenkoICT\ps_Custom-Functions.ps1"
-    Download-RemoteScript -ScriptUrl $customFunctionsUrl -SavePath $target
+    $target = Join-Path $script:DownloadDirectory "ps_Custom-Functions.ps1"
+    Get-RemoteScript -ScriptUrl $customFunctionsUrl -SavePath $target
     . $target
     Write-Log "Custom functions imported from $customFunctionsUrl" "INFO"
 }
@@ -149,7 +163,7 @@ function Invoke-DeploymentStep {
     param([string]$ScriptName,[string]$DisplayName,[hashtable]$ScriptParameters)
     Write-Log "Start: ${DisplayName}" "INFO"
     try {
-        $scriptPath = Get-RemoteScript -ScriptName $ScriptName
+        $scriptPath = Get-Script -ScriptName $ScriptName
         Set-Variable -Name 'LASTEXITCODE' -Scope Global -Value 0 -Force
         if ($ScriptParameters -and $ScriptParameters.Count -gt 0) {
             & $scriptPath @ScriptParameters
@@ -256,6 +270,7 @@ function Copy-ExternalLogs {
 
 try {
     Assert-Administrator
+    Initialize-Directories
     Initialize-Logging
     Import-CustomFunctions
     Write-Log "=== Denko ICT Device Deployment Started ===" "INFO"
