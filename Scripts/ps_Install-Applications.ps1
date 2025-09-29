@@ -234,22 +234,19 @@ try {
             if ($Force) { $wingetArgs += "--force" }
             
             $result = Start-Process winget -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
-            
-            switch ($result.ExitCode) {
-                0 { 
+                
+                # Handle exit codes
+                if ($result.ExitCode -eq 0) {
                     Write-Log "  ✓ Installed successfully" -Level Success
                     $success++
-                }
-                -1978335189 { 
-                    Write-Log "  Already installed" -Level Info
+                } elseif ($result.ExitCode -eq -1978335189) {
+                    Write-Log "  ℹ Already installed" -Level Info
                     $success++
-                }
-                default {
+                } else {
                     Write-Log "  ✗ Failed (exit: $($result.ExitCode))" -Level Error
                     $failed++
                 }
             }
-        }
     }
     
     # Summary

@@ -147,6 +147,44 @@ function Stop-Logging {
         }
     }
 }
+function Initialize-Environment {
+    <#
+    .SYNOPSIS
+        Initializes the script environment with logging.
+    #>
+    [CmdletBinding()]
+    param()
+    
+    try {
+        # Initialize log directory
+        Initialize-LogDirectory -Path $Global:DenkoConfig.LogPath
+        
+        # Start transcript if not already active
+        if (-not $Global:DenkoConfig.TranscriptActive) {
+            Start-Logging
+        }
+        
+        Write-Log "Environment initialized" -Level Info
+    } catch {
+        Write-Warning "Failed to initialize environment: $_"
+    }
+}
+
+function Stop-Environment {
+    <#
+    .SYNOPSIS
+        Cleans up the script environment and stops logging.
+    #>
+    [CmdletBinding()]
+    param()
+    
+    try {
+        Write-Log "Stopping environment" -Level Info
+        Stop-Logging
+    } catch {
+        Write-Warning "Failed to stop environment: $_"
+    }
+}
 
 function Set-RegistryValue {
     <#
