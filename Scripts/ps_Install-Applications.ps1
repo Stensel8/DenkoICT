@@ -46,15 +46,16 @@
     Installs 7zip, PowerShell 7, and Microsoft Teams.
 
 .RELEASENOTES
-    1.0.0 Initial release
-    1.1.0 Added PowerShell 7 installation and improved logging
-    2.0.0 Added WinGet support and enhanced error handling
-    2.1.0 Improved the handling of Teams installation
-    2.1.1 Bugfix: Fixed installation not executing (Start-Process issue) + improved logging with output capture
-    2.1.2 Improved logging and exit code handling for WinGet installations
+ [Version 1.0.0] - Initial release
+ [Version 1.1.0] - Added PowerShell 7 installation and improved logging
+ [Version 2.0.0] - Added WinGet support and enhanced error handling
+ [Version 2.1.0] - Improved the handling of Teams installation
+ [Version 2.1.1] - Bugfix: Fixed installation not executing (Start-Process issue) + improved logging with output capture
+ [Version 2.1.2] - Improved logging and exit code handling for WinGet installations
+ [Version 2.1.3] - Added refresh of environment PATH after winget installation to ensure winget is available in the current session.
 
 .NOTES
-    Version:  2.1.2
+    Version:  2.1.3
     Author:   Sten Tijhuis
     Company:  Denko ICT
     Requires: Admin rights, WinGet
@@ -190,6 +191,10 @@ try {
             Write-Log "PowerShell 7 MSI not found at: $PowerShell7Path" -Level Warning
         }
     }
+    
+    # Refresh environment PATH to ensure WinGet is available
+    Write-Log "Refreshing environment PATH..." -Level Info
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
     
     # Check WinGet availability
     Write-Log "Checking WinGet availability..." -Level Info

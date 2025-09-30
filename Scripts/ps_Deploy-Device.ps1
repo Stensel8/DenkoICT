@@ -323,9 +323,9 @@ function Invoke-Deployment {
         @{ 
             Script = 'ps_Install-Drivers.ps1'
             Name = 'Driver Updates'
-            RequiresNetwork = $false
-            RequiresStableNetwork = $false
-            Critical = $false
+            RequiresNetwork = $true
+            RequiresStableNetwork = $true
+            Critical = $true
         },
         @{ 
             Script = 'ps_Install-Applications.ps1'
