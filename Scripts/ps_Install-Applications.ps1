@@ -31,7 +31,7 @@
  [Version 2.1.2] - Improved logging and exit code handling for WinGet installations
  [Version 2.1.3] - Added refresh of environment PATH after winget installation to ensure winget is available in the current session.
  [Version 2.2.0] - Simplified installation flow
-
+ 
 .NOTES
     Version:  2.2.0
     Author:   Sten Tijhuis
@@ -182,11 +182,17 @@ try {
             $duration = ($endTime - $startTime).TotalSeconds
             Write-Log "  Installation completed in $([math]::Round($duration, 1)) seconds" -Level Info
             
-            # Clean and log output (strip progress bars)
-            $cleanOutput = $output -replace '[\u2588\u2591\u258A-\u258F]', '' -replace '\s+', ' '
-            if ($cleanOutput.Trim()) {
-                Write-Log "  Output: $($cleanOutput.Trim())" -Level Info
+            # Extract meaningful output (skip progress bars)
+            $meaningfulOutput = ($output -split "`n") | 
+                Where-Object { $_ -match '\S' -and $_ -notmatch '^[\s█▆▇▊▋▌▍▎▏▐░▒▓■□▪▫▬%\d\-\\|/]+$' } | 
+                Select-Object -Last 3
+            
+            if ($meaningfulOutput) {
+                foreach ($line in $meaningfulOutput) {
+                    Write-Log "  $($line.Trim())" -Level Info
+                }
             }
+            
             Write-Log "  Exit Code: $exitCode" -Level Info
             
             # Interpret exit code

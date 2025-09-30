@@ -35,6 +35,7 @@ function Write-Log {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
+        [AllowEmptyString()]
         [string]$Message,
         
         [ValidateSet('Info','Success','Warning','Error','Verbose','Debug')]
@@ -42,6 +43,12 @@ function Write-Log {
     )
     
     process {
+        # Handle empty strings for blank lines
+        if ([string]::IsNullOrEmpty($Message)) {
+            Write-Host ""
+            return
+        }
+        
         $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         $logEntry = "[$timestamp] [$Level] $Message"
         
