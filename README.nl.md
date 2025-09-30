@@ -11,7 +11,9 @@
 [![PSScriptAnalyzer](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml)
 
 ## Waarom dit project bestaat
-Deze repository vormt het hoofdonderdeel van mijn stage bij Denko ICT. Ik kreeg de taak om het automatiseringsproces en het apparaat uitrol proces te herzien. Tijdens deze evaluatie zag ik mogelijkheden om handmatige configuratietaken verder te automatiseren met moderne tooling. Met deze eigentijdse automatiseringstoolkit wil ik aantonen dat Windows 11 Pro-apparaten nog sneller, veiliger en consistenter inzetbaar zijn, door gebruik te maken van de nieuwste beschikbare technologieën.
+Deze repository vormt een onderdeel van mijn stage bij Denko ICT. Ik kreeg de taak om het automatiseringsproces en het apparaat uitrol proces te herzien. Tijdens deze evaluatie zag ik mogelijkheden om handmatige configuratietaken verder te automatiseren met moderne tooling. Met deze eigentijdse automatiseringstoolkit wil ik aantonen dat Windows 11 Pro-apparaten nog sneller, veiliger en consistenter inzetbaar zijn, door gebruik te maken van de nieuwste beschikbare technologieën. 
+
+Ik heb deze GitHub-repository zelf opgezet als centrale plek om technische documentatie en scripts te kunnen opslaan
 
 ![Expected Result](Docs/Expected_Result.png)
 
@@ -57,30 +59,21 @@ Deze repository vormt het hoofdonderdeel van mijn stage bij Denko ICT. Ik kreeg 
 ### Hardware en scope
 | Device | Status | Notities |
 | --- | --- | --- |
-| HP ProBook G9 en hoger | ✅ Geslaagd | Volledig geautomatiseerde uitrol met HP CMSL & HPIA. |
-| HP EliteBook G9 en hoger | ✅ Geslaagd | Volledig geautomatiseerde uitrol met HP CMSL & HPIA. |
-| HP ZBook G9 en hoger | ✅ Geslaagd | Volledig geautomatiseerde uitrol met HP CMSL & HPIA. |
-| Dell Latitude 5000-serie | ✅ Geslaagd | Geautomatiseerde deployment met Dell Command \| Update CLI en toolkit-scripts. |
-| Dell Latitude 7000-serie | ✅ Geslaagd | Volledig geautomatiseerde deployment via Dell Command \| Update CLI. |
-| Dell Latitude 9000-serie | ✅ Geslaagd | Volledig geautomatiseerde deployment via Dell Command \| Update CLI. |
-| Dell OptiPlex 3000-serie | ✅ Geslaagd | Desktoplijn geautomatiseerd via Dell Command \| Update CLI. |
-| Dell OptiPlex 5000-serie | ✅ Geslaagd | Desktoplijn geautomatiseerd via Dell Command \| Update CLI. |
-| Dell OptiPlex 7000-serie | ✅ Geslaagd | Desktoplijn geautomatiseerd via Dell Command \| Update CLI. |
-| Dell OptiPlex Micro | ✅ Geslaagd | Micro form factor geautomatiseerd via Dell Command \| Update CLI. |
-| Dell OptiPlex Tower | ✅ Geslaagd | Tower-chassis geautomatiseerd via Dell Command \| Update CLI. |
-| Dell OptiPlex Small Form Factor | ✅ Geslaagd | SFF-modellen geautomatiseerd via Dell Command \| Update CLI. |
-| Dell OptiPlex All-In-One | ✅ Geslaagd | AIO-devices geautomatiseerd via Dell Command \| Update CLI. |
-| Dell Precision 3000-serie | ✅ Geslaagd | Workstations geautomatiseerd via Dell Command \| Update CLI. |
-| Dell Precision 5000-serie | ✅ Geslaagd | Workstations geautomatiseerd via Dell Command \| Update CLI. |
-| Dell Precision 7000-serie | ✅ Geslaagd | Workstations geautomatiseerd via Dell Command \| Update CLI. |
+| HP ProBook 460 G11        | ✅ Geslaagd | Volledig geautomatiseerde uitrol met HP CMSL \ HPIA. |
+| Dell Latitude 5440        | ✅ Geslaagd | Volledig geautomatiseerde uitrol met Dell DCU-CLI.   |
 
-## Aan de slag
+## Aanpassen en gebruik
 1. Installeer [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) en voer scripts uit via Windows Terminal.
 2. Clone deze repository en bekijk de scripts die aansluiten op jouw deploy-scenario.
-3. Start `ps_Custom-Functions.ps1` met verhoogde rechten om de voorkeursworkflow te draaien.
-4. Pas de applicatie- en drivermanifests in `Scripts` aan om te matchen met jouw devicecatalogus.
+3. Pas scripts aan waar nodig
+4. Pas de autounattend.xml aan naar wens
 
-> Alle scripts draaien zonder Microsoft Deployment Toolkit, batchbestanden, CMD, VBScript, PowerShell 2.0 of WMIC.
+## Uitvoeren
+1. Maak een bootable USB-stick met Windows 11 Pro 25H2 (bijv. via de [Media Creation Tool](https://www.microsoft.com/software-download/windows11)).
+2. Plaats de autounattend.xml in de root van de USB-stick.
+3. Start de doelcomputer op vanaf de USB-stick en volg de automatische installatie.
+
+> Alle scripts draaien zonder verouderde tooling als Microsoft Deployment Toolkit, batchbestanden, CMD, VBScript, PowerShell 2.0 of WMIC.
 
 ## Roadmap en bijdragen
 - Optionele Intune-scripts en templates toevoegen voor hybride omgevingen.

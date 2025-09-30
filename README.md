@@ -71,15 +71,19 @@ This repository is the centerpiece of my internship at Denko ICT. I joined a tea
 | Dell OptiPlex Small Form Factor | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
 | Dell OptiPlex All-In-One | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
 | Dell Precision 3000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell Precision 5000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell Precision 7000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
+| HP ProBook 460 G11        | ✅ Passed | Fully automated deployment with HP CMSL \ HPIA. |
+| Dell Latitude 5440        | ✅ Passed | Fully automated deployment with Dell DCU-CLI.   |
 
-
-## Getting started
+## Customizing and usage
 1. Install [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) and run scripts from Windows Terminal.
 2. Clone this repository and review the scripts relevant to your deployment scenario.
-3. Launch `ps_Custom-Functions.ps1` with elevated privileges to orchestrate the preferred workflow.
-4. Customize the application and driver manifests inside `Scripts` to match your device catalogue.
+3. Customize scripts as needed
+4. Customize the autounattend.xml as desired
+
+## Execution
+1. Create a bootable USB drive with Windows 11 Pro 25H2 (e.g., via the [Media Creation Tool](https://www.microsoft.com/software-download/windows11)).
+2. Place the autounattend.xml in the root of the USB drive.
+3. Boot the target computer from the USB drive and follow the automated installation.
 
 > All scripts are designed to run without the need for Microsoft Deployment Toolkit, batch files, CMD, VBScript, PowerShell 2.0, or WMIC.
 
