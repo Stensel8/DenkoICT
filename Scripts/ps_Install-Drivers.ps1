@@ -22,7 +22,7 @@
 .EXAMPLE
     .\ps_Install-Drivers.ps1
     Runs the appropriate driver update tool based on detected system manufacturer.
-    
+
 .RELEASENOTES
     1.0.0 Initial release
     1.1.0 Added HP support and improved logging
@@ -153,68 +153,81 @@ try {
         if ($SkipHP) {
             Write-Log "Skipping HP drivers (SkipHP parameter set)" -Level Info
         } else {
-            Write-Log "Installing HP Image Assistant..." -Level Info
-            
-            $installArgs = @(
-                "install",
-                "--id", "HP.ImageAssistant",
-                "--silent",
-                "--accept-package-agreements",
-                "--accept-source-agreements"
+            # Check if HP IA already exists
+            $hpiaPaths = @(
+                "C:\Program Files\HP\HPIA\HPImageAssistant.exe",
+                "C:\SWSetup\HPImageAssistant\HPImageAssistant.exe"
             )
             
-            $result = Start-Process winget -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+            $hpia = $hpiaPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
             
-            if ($result.ExitCode -in @(0, -1978335189)) {
-                if ($result.ExitCode -eq -1978335189) {
-                    Write-Log "HP Image Assistant already installed" -Level Info
-                } else {
-                    Write-Log "HP Image Assistant installed successfully" -Level Success
-                }
+            if (-not $hpia) {
+                Write-Log "Installing HP Image Assistant..." -Level Info
                 
-                # Find HPIA executable
-                $hpiaPaths = @(
-                    "C:\Program Files\HP\HPIA\HPImageAssistant.exe",
-                    "C:\SWSetup\HPImageAssistant\HPImageAssistant.exe"
+                $installArgs = @(
+                    "install",
+                    "--id", "HP.ImageAssistant",
+                    "--silent",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements"
                 )
                 
-                $hpia = $hpiaPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+                $result = Start-Process winget -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
                 
-                if ($hpia) {
-                    Write-Log "Running HP Image Assistant..." -Level Info
-                    
-                    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-                    $workPath = Join-Path $env:TEMP "HPIA-$timestamp"
-                    New-Item -ItemType Directory -Path $workPath -Force | Out-Null
-                    
-                    $hpiaArgs = @(
-                        "/Operation:Analyze",
-                        "/Category:Driver",
-                        "/Action:Install",
-                        "/Silent",
-                        "/ReportFolder:$workPath"
-                    )
-                    
-                    $hpiaResult = Start-Process $hpia -ArgumentList $hpiaArgs -Wait -PassThru -NoNewWindow
-                    
-                    if ($hpiaResult.ExitCode -eq 0) {
-                        Write-Log "HP driver updates completed successfully" -Level Success
-                        
-                        $report = Get-ChildItem -Path $workPath -Filter *.html -ErrorAction SilentlyContinue | Select-Object -First 1
-                        if ($report) {
-                            Write-Log "Report: $($report.FullName)" -Level Info
-                        }
-                    } else {
-                        Write-Log "HP Image Assistant failed (exit: $($hpiaResult.ExitCode))" -Level Warning
-                    }
-                    
-                    # Cleanup
-                    Remove-Item -Path $workPath -Recurse -Force -ErrorAction SilentlyContinue
+                if ($result.ExitCode -in @(0, -1978335189)) {
+                    Write-Log "HP Image Assistant installed successfully" -Level Success
                 } else {
-                    Write-Log "HP Image Assistant not found at expected path" -Level Warning
+                    Write-Log "HP Image Assistant installation failed (exit: $($result.ExitCode))" -Level Warning
                 }
+                
+                # Re-check for HPIA after installation attempt
+                $hpia = $hpiaPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
             } else {
-                Write-Log "HP Image Assistant installation failed (exit: $($result.ExitCode))" -Level Error
+                Write-Log "HP Image Assistant already installed" -Level Info
+            }
+            
+                if ($hpia) {
+                Write-Log "Running HP Image Assistant..." -Level Info
+                
+                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+                $workPath = Join-Path $env:TEMP "HPIA-$timestamp"
+                New-Item -ItemType Directory -Path $workPath -Force | Out-Null
+                
+                $hpiaArgs = @(
+                    "/Operation:Analyze",
+                    "/Category:All",
+                    "/Selection:All",
+                    "/InstallType:All",
+                    "/Action:Install",
+                    "/Silent",
+                    "/ReportFolder:$workPath"
+                )
+                
+                $hpiaResult = Start-Process $hpia -ArgumentList $hpiaArgs -Wait -PassThru -NoNewWindow
+                
+                # Check if report was generated (success indicator)
+                $report = Get-ChildItem -Path $workPath -Filter *.html -ErrorAction SilentlyContinue | Select-Object -First 1
+                
+                if ($report) {
+                    Write-Log "HP Image Assistant completed - report generated" -Level Success
+                    Write-Log "Report: $($report.FullName)" -Level Info
+                    
+                    if ($hpiaResult.ExitCode -ne 0) {
+                        Write-Log "Note: Exit code $($hpiaResult.ExitCode) - may indicate warnings (e.g., unsupported OS version)" -Level Warning
+                    }
+                } else {
+                    # No report means actual failure
+                    switch ($hpiaResult.ExitCode) {
+                        0 { Write-Log "HP Image Assistant completed successfully" -Level Success }
+                        4097 { Write-Log "HP system may be up to date or OS version not fully supported" -Level Info }
+                        default { Write-Log "HP Image Assistant failed (exit: $($hpiaResult.ExitCode))" -Level Warning }
+                    }
+                }
+                
+                # Cleanup
+                Remove-Item -Path $workPath -Recurse -Force -ErrorAction SilentlyContinue
+            } else {
+                Write-Log "HP Image Assistant not found - unable to update drivers" -Level Error
             }
         }
     }
