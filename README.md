@@ -88,40 +88,40 @@ This project is distributed under the terms of the [MIT License](LICENSE). This 
 
 ### Primary contributors
 These repositories and users shaped large parts of the automation logic:
-- https://github.com/stensel8/pchealth
-- https://github.com/realsdeals/
-- https://github.com/jeffdfield
-- https://github.com/FriendsOfMDT/PSD
-- https://github.com/ChrisTitusTech/winutil
-- https://github.com/KelvinTegelaar/RunAsUser
+- [https://github.com/stensel8/pchealth](https://github.com/stensel8/pchealth)
+- [https://github.com/realsdeals/](https://github.com/realsdeals/)
+- [https://github.com/jeffdfield](https://github.com/jeffdfield)
+- [https://github.com/FriendsOfMDT/PSD](https://github.com/FriendsOfMDT/PSD)
+- [https://github.com/ChrisTitusTech/winutil](https://github.com/ChrisTitusTech/winutil)
+- [https://github.com/KelvinTegelaar/RunAsUser](https://github.com/KelvinTegelaar/RunAsUser)
 
 ### Additional references
-- https://www.smartdeploy.com/download/trial-guide/
-- https://docs.microsoft.com/en-us/windows/deployment/windows-deployment-scenarios
-- https://github.com/FriendsOfMDT/PSD
-- https://learn.microsoft.com/en-us/intune/configmgr/mdt/
-- https://www.microsoft.com/en-us/download/details.aspx?id=54259
-- https://github.com/Stensel8/Intune-Deployment-Tool
-- https://github.com/rink-turksma/IntunePrepTool
-- https://uupdump.net/
-- https://2pintsoftware.com/products/deployr
-- https://www.immy.bot/
-- https://github.com/Romanitho/Winget-Install
-- https://github.com/ChrisTitusTech/winutil
-- https://api.github.com/repos/microsoft/winget-cli/releases/latest
-- https://github.com/KelvinTegelaar/RunAsUser
-- https://github.com/asheroto/winget-install
-- https://www.powershellgallery.com/packages/winget-install/
-- https://www.powershellgallery.com/packages/HPCMSL/
-- https://github.com/omaha-consulting/winstall
-- https://github.com/omaha-consulting/winget.pro
-- https://github.com/REALSDEALS/pcHealth
-- https://github.com/REALSDEALS/pcHealthPlus-VS
-- https://github.com/REALSDEALS/pcHealthPlus
+- [https://www.smartdeploy.com/download/trial-guide/](https://www.smartdeploy.com/download/trial-guide/)
+- [https://docs.microsoft.com/en-us/windows/deployment/windows-deployment-scenarios](https://docs.microsoft.com/en-us/windows/deployment/windows-deployment-scenarios)
+- [https://github.com/FriendsOfMDT/PSD](https://github.com/FriendsOfMDT/PSD)
+- [https://learn.microsoft.com/en-us/intune/configmgr/mdt/](https://learn.microsoft.com/en-us/intune/configmgr/mdt/)
+- [https://www.microsoft.com/en-us/download/details.aspx?id=54259](https://www.microsoft.com/en-us/download/details.aspx?id=54259)
+- [https://github.com/Stensel8/Intune-Deployment-Tool](https://github.com/Stensel8/Intune-Deployment-Tool)
+- [https://github.com/rink-turksma/IntunePrepTool](https://github.com/rink-turksma/IntunePrepTool)
+- [https://uupdump.net/](https://uupdump.net/)
+- [https://2pintsoftware.com/products/deployr](https://2pintsoftware.com/products/deployr)
+- [https://www.immy.bot/](https://www.immy.bot/)
+- [https://github.com/Romanitho/Winget-Install](https://github.com/Romanitho/Winget-Install)
+- [https://github.com/ChrisTitusTech/winutil](https://github.com/ChrisTitusTech/winutil)
+- [https://api.github.com/repos/microsoft/winget-cli/releases/latest](https://api.github.com/repos/microsoft/winget-cli/releases/latest)
+- [https://github.com/KelvinTegelaar/RunAsUser](https://github.com/KelvinTegelaar/RunAsUser)
+- [https://github.com/asheroto/winget-install](https://github.com/asheroto/winget-install)
+- [https://www.powershellgallery.com/packages/winget-install/](https://www.powershellgallery.com/packages/winget-install/)
+- [https://www.powershellgallery.com/packages/HPCMSL/](https://www.powershellgallery.com/packages/HPCMSL/)
+- [https://github.com/omaha-consulting/winstall](https://github.com/omaha-consulting/winstall)
+- [https://github.com/omaha-consulting/winget.pro](https://github.com/omaha-consulting/winget.pro)
+- [https://github.com/REALSDEALS/pcHealth](https://github.com/REALSDEALS/pcHealth)
+- [https://github.com/REALSDEALS/pcHealthPlus-VS](https://github.com/REALSDEALS/pcHealthPlus-VS)
+- [https://github.com/REALSDEALS/pcHealthPlus](https://github.com/REALSDEALS/pcHealthPlus)
 
 ### Microsoft ecosystem partners
-- https://learn.robopack.com/home
-- https://www.rimo3.com/ms-intune-migration
-- https://winstall.app/
-- https://winget.pro/
-- https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md
+- [https://learn.robopack.com/home](https://learn.robopack.com/home)
+- [https://www.rimo3.com/ms-intune-migration](https://www.rimo3.com/ms-intune-migration)
+- [https://winstall.app/](https://winstall.app/)
+- [https://winget.pro/](https://winget.pro/)
+- [https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md](https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md)
