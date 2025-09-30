@@ -44,9 +44,14 @@
 .EXAMPLE
     .\ps_Install-Applications.ps1 -Applications @("7zip.7zip") -InstallPowerShell7
     Installs 7zip, PowerShell 7, and Microsoft Teams.
+.RELEASENOTES
+    1.0.0 Initial release
+    1.1.0 Added PowerShell 7 installation and improved logging
+    2.0.0 Added WinGet support and enhanced error handling
+    2.1.0 Improved the handling of Teams installation
 
 .NOTES
-    Version:  2.0.0
+    Version:  2.1.0
     Author:   Sten Tijhuis
     Company:  Denko ICT
     Requires: Admin rights, WinGet
@@ -57,12 +62,10 @@ param(
     [string[]]$Applications = @(
         "Microsoft.VCRedist.2015+.x64",
         "Microsoft.Office",
+        "Microsoft.Teams",
+        "Microsoft.OneDrive",
         "7zip.7zip"
     ),
-    
-    [switch]$SkipTeams,
-    [string]$TeamsBootstrapperPath,
-    [string]$TeamsMSIXPath,
     
     [switch]$InstallPowerShell7,
     [string]$PowerShell7Path,
@@ -137,46 +140,6 @@ try {
         }
     }
     
-    # Install Teams by default (unless skipped)
-    if (-not $SkipTeams) {
-        Write-Log "Installing Microsoft Teams..." -Level Info
-        
-        if (-not $TeamsBootstrapperPath) {
-            $TeamsBootstrapperPath = Join-Path $PSScriptRoot "teamsbootstrapper.exe"
-        }
-        if (-not $TeamsMSIXPath) {
-            $TeamsMSIXPath = Join-Path $PSScriptRoot "MSTeams-x64.msix"
-        }
-        
-        if ((Test-Path $TeamsBootstrapperPath) -and (Test-Path $TeamsMSIXPath)) {
-            $bootResult = Start-Process -FilePath $TeamsBootstrapperPath `
-                         -ArgumentList "-p -o `"$TeamsMSIXPath`"" `
-                         -Wait -PassThru -NoNewWindow
-            
-            if ($bootResult.ExitCode -eq 0) {
-                Write-Log "Teams installed successfully" -Level Success
-                
-                # Check installation
-                $teamsApp = Get-AppxPackage -AllUsers | Where-Object { $_.Name -eq "MSTeams" }
-                if ($teamsApp) {
-                    Write-Log "Teams version: $($teamsApp.Version)" -Level Info
-                    
-                    # Disable auto-start (optional)
-                    $regPath = "HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\MicrosoftTeams_8wekyb3d8bbwe\TeamsStartupTask"
-                    Set-RegistryValue -Path $regPath -Name "State" -Value 2 -Type DWord
-                    
-                    Set-IntuneSuccess -AppName "MicrosoftTeams" -Version $teamsApp.Version
-                }
-            } else {
-                Write-Log "Teams installation failed (exit: $($bootResult.ExitCode))" -Level Error
-            }
-        } else {
-            Write-Log "Teams installer files not found" -Level Warning
-            Write-Log "  Expected: $TeamsBootstrapperPath" -Level Warning
-            Write-Log "  Expected: $TeamsMSIXPath" -Level Warning
-        }
-    }
-    
     # Check WinGet availability
     Write-Log "Checking WinGet availability..." -Level Info
     try {
@@ -186,11 +149,8 @@ try {
         }
         Write-Log "WinGet version: $wingetVersion" -Level Info
     } catch {
-        Write-Log "WinGet not installed - skipping WinGet applications" -Level Error
-        if (-not $InstallTeams -and -not $InstallPowerShell7) {
-            exit 1
-        }
-        exit 0
+        Write-Log "WinGet not installed - cannot proceed" -Level Error
+        exit 1
     }
     
     # Adjust applications for ARM64
@@ -235,18 +195,18 @@ try {
             
             $result = Start-Process winget -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
                 
-                # Handle exit codes
-                if ($result.ExitCode -eq 0) {
-                    Write-Log "  ✓ Installed successfully" -Level Success
-                    $success++
-                } elseif ($result.ExitCode -eq -1978335189) {
-                    Write-Log "  ℹ Already installed" -Level Info
-                    $success++
-                } else {
-                    Write-Log "  ✗ Failed (exit: $($result.ExitCode))" -Level Error
-                    $failed++
-                }
+            # Handle exit codes
+            if ($result.ExitCode -eq 0) {
+                Write-Log "  ✓ Installed successfully" -Level Success
+                $success++
+            } elseif ($result.ExitCode -eq -1978335189) {
+                Write-Log "  Already installed. Continuing..." -Level Info
+                $success++
+            } else {
+                Write-Log "  Failed (exit: $($result.ExitCode))" -Level Error
+                $failed++
             }
+        }
     }
     
     # Summary
