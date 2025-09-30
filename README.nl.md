@@ -124,3 +124,4 @@ Deze repositories en makers vormden de basis voor grote delen van de automatiser
 - https://www.rimo3.com/ms-intune-migration
 - https://winstall.app/
 - https://winget.pro/
+- https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md

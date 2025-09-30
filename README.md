@@ -124,3 +124,4 @@ These repositories and users shaped large parts of the automation logic:
 - https://www.rimo3.com/ms-intune-migration
 - https://winstall.app/
 - https://winget.pro/
+- https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md
