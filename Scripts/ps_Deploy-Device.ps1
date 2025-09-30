@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.2.0
+.VERSION 1.3.0
 
 .AUTHOR Sten Tijhuis
 
@@ -17,6 +17,7 @@
 [Version 1.1.0] - Improved external log collection.
 [Version 1.2.0] - Enforces C:\DenkoICT\Logs for all logging, uses Bitstransfer for downloads, forces custom-functions download.
 [Version 1.2.2] - Enforces C:\DenkoICT\Download for all downloads.
+[Version 1.3.0] - Improved execution order, network stability checks with retries, better handling for network-dependent operations
 #>
 
 #requires -Version 5.1
@@ -27,14 +28,21 @@
     Orchestrates Denko ICT device deployment by running child scripts in sequence.
 
 .DESCRIPTION
-    Always downloads custom functions. All logs and transcripts go to C:\DenkoICT\Logs. Uses Bitstransfer for remote downloads.
+    Always downloads custom functions. All logs and transcripts go to C:\DenkoICT\Logs. 
+    Checks network stability before network-dependent operations.
 #>
 
 [CmdletBinding()]
 param (
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
-    [string]$ScriptBaseUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts"
+    [string]$ScriptBaseUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts",
+    
+    [Parameter(Mandatory = $false)]
+    [int]$NetworkRetryCount = 5,
+    
+    [Parameter(Mandatory = $false)]
+    [int]$NetworkRetryDelaySeconds = 10
 )
 
 Set-StrictMode -Version Latest
@@ -103,46 +111,140 @@ function Initialize-Logging {
     Write-Log "Transcript logging path: ${script:TranscriptPath}" "INFO"
 }
 
-function Get-RemoteScript {
-    param([string]$ScriptUrl,[string]$SavePath)
+function Test-NetworkConnectivity {
+    param(
+        [string]$TestUrl = "https://raw.githubusercontent.com",
+        [int]$TimeoutSeconds = 5
+    )
     
-    # Ensure the directory exists
+    try {
+        $request = [System.Net.WebRequest]::Create($TestUrl)
+        $request.Timeout = $TimeoutSeconds * 1000
+        $request.Method = "HEAD"
+        $response = $request.GetResponse()
+        $response.Close()
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Wait-ForNetworkStability {
+    param(
+        [int]$MaxRetries = $script:NetworkRetryCount,
+        [int]$DelaySeconds = $script:NetworkRetryDelaySeconds,
+        [switch]$ContinuousCheck
+    )
+    
+    Write-Log "Checking network connectivity..." "INFO"
+    
+    for ($i = 1; $i -le $MaxRetries; $i++) {
+        if (Test-NetworkConnectivity) {
+            Write-Log "Network connectivity confirmed (attempt $i/$MaxRetries)" "SUCCESS"
+            
+            if ($ContinuousCheck) {
+                # Additional checks for stability
+                Write-Log "Performing stability check..." "VERBOSE"
+                $stable = $true
+                for ($j = 1; $j -le 3; $j++) {
+                    Start-Sleep -Seconds 2
+                    if (-not (Test-NetworkConnectivity)) {
+                        $stable = $false
+                        break
+                    }
+                }
+                if ($stable) {
+                    Write-Log "Network connection is stable" "SUCCESS"
+                    return $true
+                }
+                Write-Log "Network unstable, retrying..." "WARN"
+            } else {
+                return $true
+            }
+        }
+        
+        if ($i -lt $MaxRetries) {
+            Write-Log "Network not available (attempt $i/$MaxRetries). Waiting $DelaySeconds seconds..." "WARN"
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+    
+    Write-Log "Network connectivity check failed after $MaxRetries attempts" "ERROR"
+    return $false
+}
+
+function Get-RemoteScript {
+    param(
+        [string]$ScriptUrl,
+        [string]$SavePath,
+        [int]$MaxRetries = 3
+    )
+    
     $directory = Split-Path $SavePath -Parent
     if (-not (Test-Path $directory)) {
         New-Item -Path $directory -ItemType Directory -Force | Out-Null
         Write-Log "Created directory: $directory" "VERBOSE"
     }
     
-    try {
-        Import-Module BitsTransfer -ErrorAction SilentlyContinue
-        Start-BitsTransfer -Source $ScriptUrl -Destination $SavePath -ErrorAction Stop
-        Write-Log "Downloaded via BitsTransfer: $ScriptUrl > $SavePath" "SUCCESS"
-    } catch {
-        Write-Log "BitsTransfer failed, falling back to Invoke-WebRequest..." "WARN"
+    for ($i = 1; $i -le $MaxRetries; $i++) {
         try {
-            Invoke-WebRequest -Uri $ScriptUrl -OutFile $SavePath -UseBasicParsing -ErrorAction Stop
-            Write-Log "Downloaded via WebRequest: $ScriptUrl > $SavePath" "SUCCESS"
+            # Verify network before download
+            if (-not (Test-NetworkConnectivity)) {
+                throw "Network not available"
+            }
+            
+            Import-Module BitsTransfer -ErrorAction SilentlyContinue
+            Start-BitsTransfer -Source $ScriptUrl -Destination $SavePath -ErrorAction Stop
+            Write-Log "Downloaded via BitsTransfer: $ScriptUrl > $SavePath" "SUCCESS"
+            return $true
         } catch {
-            Write-Log "Download failed: $ScriptUrl ($_) " "ERROR"
-            throw
+            Write-Log "BitsTransfer failed (attempt $i/$MaxRetries): $_" "WARN"
+            
+            if ($i -lt $MaxRetries) {
+                # Try WebRequest as fallback
+                try {
+                    Invoke-WebRequest -Uri $ScriptUrl -OutFile $SavePath -UseBasicParsing -ErrorAction Stop
+                    Write-Log "Downloaded via WebRequest: $ScriptUrl > $SavePath" "SUCCESS"
+                    return $true
+                } catch {
+                    Write-Log "WebRequest also failed. Retrying in 5 seconds..." "WARN"
+                    Start-Sleep -Seconds 5
+                }
+            }
         }
     }
+    
+    Write-Log "Download failed after $MaxRetries attempts: $ScriptUrl" "ERROR"
+    return $false
 }
 
 function Get-Script {
     param([string]$ScriptName)
     $url = "$ScriptBaseUrl/$ScriptName"
     $localPath = Join-Path $script:DownloadDirectory $ScriptName
-    Get-RemoteScript -ScriptUrl $url -SavePath $localPath
-    return $localPath
+    
+    if (Get-RemoteScript -ScriptUrl $url -SavePath $localPath) {
+        return $localPath
+    } else {
+        throw "Failed to download script: $ScriptName"
+    }
 }
 
 function Import-CustomFunctions {
     $customFunctionsUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Custom-Functions.ps1"
     $target = Join-Path $script:DownloadDirectory "ps_Custom-Functions.ps1"
-    Get-RemoteScript -ScriptUrl $customFunctionsUrl -SavePath $target
-    . $target
-    Write-Log "Custom functions imported from $customFunctionsUrl" "INFO"
+    
+    # Ensure network is available before downloading critical functions
+    if (-not (Wait-ForNetworkStability)) {
+        throw "Cannot download custom functions - no network connectivity"
+    }
+    
+    if (Get-RemoteScript -ScriptUrl $customFunctionsUrl -SavePath $target) {
+        . $target
+        Write-Log "Custom functions imported from $customFunctionsUrl" "INFO"
+    } else {
+        throw "Failed to import custom functions"
+    }
 }
 
 function Set-WinGetSessionDefaults {
@@ -160,20 +262,40 @@ function Set-WinGetSessionDefaults {
 }
 
 function Invoke-DeploymentStep {
-    param([string]$ScriptName,[string]$DisplayName,[hashtable]$ScriptParameters)
+    param(
+        [string]$ScriptName,
+        [string]$DisplayName,
+        [hashtable]$ScriptParameters,
+        [switch]$RequiresNetwork,
+        [switch]$RequiresStableNetwork
+    )
+    
     Write-Log "Start: ${DisplayName}" "INFO"
+    
     try {
+        # Check network if required
+        if ($RequiresNetwork) {
+            Write-Log "This step requires network connectivity..." "VERBOSE"
+            if (-not (Wait-ForNetworkStability -ContinuousCheck:$RequiresStableNetwork)) {
+                Write-Log "Network not available for ${DisplayName}" "ERROR"
+                return $false
+            }
+        }
+        
         $scriptPath = Get-Script -ScriptName $ScriptName
         Set-Variable -Name 'LASTEXITCODE' -Scope Global -Value 0 -Force
+        
         if ($ScriptParameters -and $ScriptParameters.Count -gt 0) {
             & $scriptPath @ScriptParameters
         } else {
             & $scriptPath
         }
+        
         if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
             Write-Log "Script exit code: $LASTEXITCODE" "WARN"
             return $false
         }
+        
         Write-Log "Completed: ${DisplayName}" "SUCCESS"
         return $true
     } catch {
@@ -183,40 +305,125 @@ function Invoke-DeploymentStep {
 }
 
 function Invoke-Deployment {
+    # Improved execution order:
+    # 1. Install WinGet (needs network, but quick)
+    # 2. Install Drivers (no network needed - HPIA/DCU work offline)
+    # 3. Verify stable network
+    # 4. Install Applications (needs continuous network)
+    # 5. Set Wallpaper (needs network to download, but optional)
+    
     $deploymentSteps = @(
-        @{ Script = 'ps_Install-Winget.ps1'; Name = 'WinGet installation' },
-        @{ Script = 'ps_Install-Drivers.ps1'; Name = 'Driver Updates' },
-        @{ Script = 'ps_Install-Applications.ps1'; Name = 'Application installation' },
-        @{ Script = 'ps_Set-Wallpaper.ps1'; Name = 'Wallpaper configuration' }
+        @{ 
+            Script = 'ps_Install-Winget.ps1'
+            Name = 'WinGet installation'
+            RequiresNetwork = $true
+            RequiresStableNetwork = $false
+            Critical = $true
+        },
+        @{ 
+            Script = 'ps_Install-Drivers.ps1'
+            Name = 'Driver Updates'
+            RequiresNetwork = $false
+            RequiresStableNetwork = $false
+            Critical = $false
+        },
+        @{ 
+            Script = 'ps_Install-Applications.ps1'
+            Name = 'Application installation'
+            RequiresNetwork = $true
+            RequiresStableNetwork = $true  # Office needs stable network
+            Critical = $false
+        },
+        @{ 
+            Script = 'ps_Set-Wallpaper.ps1'
+            Name = 'Wallpaper configuration'
+            RequiresNetwork = $true
+            RequiresStableNetwork = $false
+            Critical = $false
+        }
     )
-    $result = [pscustomobject]@{ Success = 0; Failed = 0 }
+    
+    $result = [pscustomobject]@{ Success = 0; Failed = 0; Skipped = 0 }
     Set-WinGetSessionDefaults
     $wingetSucceeded = $false
+    
     foreach ($step in $deploymentSteps) {
         $parameters = if ($step.ContainsKey('Parameters')) { $step.Parameters } else { $null }
+        
+        # Special handling for WinGet installation
         if ($step.Script -eq 'ps_Install-Winget.ps1') {
-            $wingetSucceeded = Invoke-DeploymentStep -ScriptName $step.Script -DisplayName $step.Name -ScriptParameters $parameters
+            # Ensure network before attempting WinGet install
+            if (-not (Wait-ForNetworkStability)) {
+                Write-Log "Cannot install WinGet without network. Attempting offline mode..." "ERROR"
+                $result.Failed++
+                continue
+            }
+            
+            $wingetSucceeded = Invoke-DeploymentStep `
+                -ScriptName $step.Script `
+                -DisplayName $step.Name `
+                -ScriptParameters $parameters `
+                -RequiresNetwork:$step.RequiresNetwork `
+                -RequiresStableNetwork:$step.RequiresStableNetwork
+            
             if (-not $wingetSucceeded) {
                 Write-Log "WinGet installation failed. Attempting alternative method..." "WARN"
                 Set-Variable -Name 'AlternateInstallMethod' -Scope Global -Value $true -Force
-                $wingetSucceeded = Invoke-DeploymentStep -ScriptName $step.Script -DisplayName 'WinGet installation (alternative)' -ScriptParameters $parameters
+                $wingetSucceeded = Invoke-DeploymentStep `
+                    -ScriptName $step.Script `
+                    -DisplayName 'WinGet installation (alternative)' `
+                    -ScriptParameters $parameters `
+                    -RequiresNetwork:$true `
+                    -RequiresStableNetwork:$false
                 Set-Variable -Name 'AlternateInstallMethod' -Scope Global -Value $false -Force
             }
-            if ($wingetSucceeded) { $result.Success++ } else { $result.Failed++ }
+            
+            if ($wingetSucceeded) { 
+                $result.Success++ 
+            } else { 
+                $result.Failed++
+                Write-Log "WinGet is required but failed to install" "ERROR"
+            }
             continue
         }
+        
+        # Skip applications if WinGet failed
         if ($step.Script -eq 'ps_Install-Applications.ps1' -and -not $wingetSucceeded) {
             Write-Log "Application installation skipped; WinGet not available." "WARN"
-            $result.Failed++
+            $result.Skipped++
             continue
         }
-        if (Invoke-DeploymentStep -ScriptName $step.Script -DisplayName $step.Name -ScriptParameters $parameters) {
+        
+        # Additional network check before network-dependent operations
+        if ($step.RequiresStableNetwork) {
+            Write-Log "This step requires stable network (e.g., Office installer downloads)" "INFO"
+            if (-not (Wait-ForNetworkStability -ContinuousCheck)) {
+                Write-Log "Network not stable enough for ${step.Name}. Skipping..." "WARN"
+                $result.Skipped++
+                continue
+            }
+        }
+        
+        # Execute step
+        $stepResult = Invoke-DeploymentStep `
+            -ScriptName $step.Script `
+            -DisplayName $step.Name `
+            -ScriptParameters $parameters `
+            -RequiresNetwork:$step.RequiresNetwork `
+            -RequiresStableNetwork:$step.RequiresStableNetwork
+        
+        if ($stepResult) {
             $result.Success++
         } else {
             $result.Failed++
+            if ($step.Critical) {
+                Write-Log "Critical step failed. Aborting deployment." "ERROR"
+                break
+            }
             Write-Log "Continuing despite error..." "WARN"
         }
     }
+    
     return $result
 }
 
@@ -272,14 +479,24 @@ try {
     Assert-Administrator
     Initialize-Directories
     Initialize-Logging
-    Import-CustomFunctions
+    
+    # Initial network check with extended retry
     Write-Log "=== Denko ICT Device Deployment Started ===" "INFO"
+    Write-Log "Performing initial network check (extended timeout)..." "INFO"
+    if (-not (Wait-ForNetworkStability -MaxRetries 10)) {
+        Write-Log "WARNING: Network not available. Some steps may fail." "WARN"
+    }
+    
+    Import-CustomFunctions
+    
     $deploymentResult = Invoke-Deployment
+    
     Write-Log "=== Deployment Complete ===" "INFO"
-    Write-Log "Successful: $($deploymentResult.Success) | Failed: $($deploymentResult.Failed)" "INFO"
+    Write-Log "Successful: $($deploymentResult.Success) | Failed: $($deploymentResult.Failed) | Skipped: $($deploymentResult.Skipped)" "INFO"
     Write-Log "Log file: $script:TranscriptPath" "INFO"
     Write-ColorOutput "`nDeployment finished. Press any key to exit..." "Info"
     [void][System.Console]::ReadKey($true)
+    
     if ($deploymentResult.Failed -gt 0) { exit 1 } else { exit 0 }
 } catch {
     Write-Log "Deployment aborted due to an unexpected error: $($_)" "ERROR"
