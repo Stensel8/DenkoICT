@@ -1,31 +1,12 @@
 <#
 .SYNOPSIS
-    Installs applications via WinGet or custom installers.
+    Installs applications via WinGet.
 
 .DESCRIPTION
-    Installs applications using WinGet package manager or custom installers like Teams.
-    Supports PowerShell 7 for system context installations.
+    Installs applications using WinGet package manager.
 
 .PARAMETER Applications
     Array of WinGet application IDs to install.
-
-.PARAMETER SkipTeams
-    Skip Microsoft Teams installation.
-
-.PARAMETER TeamsBootstrapperPath
-    Path to teamsbootstrapper.exe (default: script directory).
-
-.PARAMETER TeamsMSIXPath
-    Path to MSTeams-x64.msix (default: script directory).
-
-.PARAMETER InstallPowerShell7
-    Install PowerShell 7 before other applications.
-
-.PARAMETER PowerShell7Path
-    Path to PowerShell 7 MSI installer.
-
-.PARAMETER UsePowerShell7
-    Use PowerShell 7 for WinGet installations (better for system context).
 
 .PARAMETER Force
     Force reinstall even if already installed.
@@ -35,15 +16,11 @@
 
 .EXAMPLE
     .\ps_Install-Applications.ps1
-    Installs default applications including Microsoft Teams.
+    Installs default applications.
 
 .EXAMPLE
-    .\ps_Install-Applications.ps1 -SkipTeams
-    Installs default applications but skips Microsoft Teams.
-
-.EXAMPLE
-    .\ps_Install-Applications.ps1 -Applications @("7zip.7zip") -InstallPowerShell7
-    Installs 7zip, PowerShell 7, and Microsoft Teams.
+    .\ps_Install-Applications.ps1 -Applications @("7zip.7zip")
+    Installs only 7zip.
 
 .RELEASENOTES
  [Version 1.0.0] - Initial release
@@ -53,9 +30,10 @@
  [Version 2.1.1] - Bugfix: Fixed installation not executing (Start-Process issue) + improved logging with output capture
  [Version 2.1.2] - Improved logging and exit code handling for WinGet installations
  [Version 2.1.3] - Added refresh of environment PATH after winget installation to ensure winget is available in the current session.
+ [Version 2.2.0] - Simplified installation flow
 
 .NOTES
-    Version:  2.1.3
+    Version:  2.2.0
     Author:   Sten Tijhuis
     Company:  Denko ICT
     Requires: Admin rights, WinGet
@@ -64,6 +42,7 @@
 [CmdletBinding()]
 param(
     [string[]]$Applications = @(
+        "Microsoft.PowerShell",
         "Microsoft.VCRedist.2015+.x64",
         "Microsoft.Office",
         "Microsoft.Teams",
@@ -71,10 +50,6 @@ param(
         "7zip.7zip"
     ),
     
-    [switch]$InstallPowerShell7,
-    [string]$PowerShell7Path,
-    
-    [switch]$UsePowerShell7,
     [switch]$Force,
     [switch]$SkipLogging
 )
@@ -100,7 +75,6 @@ $script:WinGetExitCodes = @{
     -1978335188 = "Upgrade all completed with failures"
     -1978335174 = "Operation blocked by Group Policy"
     -1978335135 = "Package already installed"
-    # Install errors
     -1978334975 = "Application currently running"
     -1978334974 = "Another installation in progress"
     -1978334973 = "File in use"
@@ -146,52 +120,6 @@ try {
     $isARM64 = $env:PROCESSOR_ARCHITECTURE -eq "ARM64"
     Write-Log "System architecture: $env:PROCESSOR_ARCHITECTURE" -Level Info
     
-    # Install PowerShell 7 if requested
-    if ($InstallPowerShell7) {
-        Write-Log "Installing PowerShell 7..." -Level Info
-        
-        if (-not $PowerShell7Path) {
-            # Auto-detect PS7 MSI in script directory
-            $pattern = if ($isARM64) { "PowerShell-7.*-win-arm64.msi" } else { "PowerShell-7.*-win-x64.msi" }
-            $PowerShell7Path = Get-ChildItem -Path $PSScriptRoot -Filter $pattern -ErrorAction SilentlyContinue | 
-                              Select-Object -First 1 -ExpandProperty FullName
-        }
-        
-        if ($PowerShell7Path -and (Test-Path $PowerShell7Path)) {
-            $msiArgs = @(
-                "/i", "`"$PowerShell7Path`""
-                "/qn"
-                "ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1"
-                "ENABLE_PSREMOTING=1"
-                "ADD_PATH=1"
-            )
-            
-            $result = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
-            
-            if ($result.ExitCode -in @(0, 3010, 1641)) {
-                Write-Log "PowerShell 7 installed successfully (exit: $($result.ExitCode))" -Level Success
-                
-                # Install WinGet module for PS7
-                if ($UsePowerShell7) {
-                    Write-Log "Installing Microsoft.WinGet.Client module for PowerShell 7..." -Level Info
-                    $ps7Exe = "C:\Program Files\PowerShell\7\pwsh.exe"
-                    if (Test-Path $ps7Exe) {
-                        try {
-                            $moduleOutput = & $ps7Exe -Command "Install-Module Microsoft.WinGet.Client -Force -Scope AllUsers -AcceptLicense" 2>&1
-                            Write-Log "  Module installation output: $moduleOutput" -Level Info
-                        } catch {
-                            Write-Log "  Module installation warning: $_" -Level Warning
-                        }
-                    }
-                }
-            } else {
-                Write-Log "PowerShell 7 installation failed (exit: $($result.ExitCode))" -Level Warning
-            }
-        } else {
-            Write-Log "PowerShell 7 MSI not found at: $PowerShell7Path" -Level Warning
-        }
-    }
-    
     # Refresh environment PATH to ensure WinGet is available
     Write-Log "Refreshing environment PATH..." -Level Info
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
@@ -221,79 +149,76 @@ try {
     $success = 0
     $failed = 0
     
+    Write-Log "Starting installation of $($Applications.Count) applications..." -Level Info
+    
     foreach ($app in $Applications) {
-        Write-Log "Installing $app..." -Level Info
+        Write-Log "=== Processing: $app ===" -Level Info
         
         try {
-            if ($UsePowerShell7 -and (Test-Path "C:\Program Files\PowerShell\7\pwsh.exe")) {
-                # Use PowerShell 7 for better system context support
-                Write-Log "  Using PowerShell 7 for installation..." -Level Info
-                $output = & "C:\Program Files\PowerShell\7\pwsh.exe" -Command "Install-WinGetPackage -Id '$app' -Mode Silent" 2>&1 | Out-String
-                $exitCode = $LASTEXITCODE
-                
-                Write-Log "  PS7 Output: $($output.Trim())" -Level Info
-                Write-Log "  PS7 Exit Code: $exitCode" -Level Info
-                
-                if ($exitCode -eq 0) {
-                    Write-Log "  ✓ Installed via PowerShell 7" -Level Success
-                    $success++
-                } else {
-                    Write-Log "  ✗ Failed via PowerShell 7" -Level Error
-                    $failed++
-                }
+            # Build winget arguments
+            $wingetArgs = @(
+                "install"
+                "--id", $app
+                "--silent"
+                "--accept-package-agreements"
+                "--accept-source-agreements"
+            )
+            
+            if ($Force) { 
+                $wingetArgs += "--force"
+                Write-Log "  Force flag enabled" -Level Info
+            }
+            
+            Write-Log "  Executing: winget $($wingetArgs -join ' ')" -Level Info
+            
+            # Execute winget and capture output
+            $startTime = Get-Date
+            Write-Log "  Installation started at: $($startTime.ToString('HH:mm:ss'))" -Level Info
+            
+            $output = & winget $wingetArgs 2>&1 | Out-String
+            $exitCode = $LASTEXITCODE
+            
+            $endTime = Get-Date
+            $duration = ($endTime - $startTime).TotalSeconds
+            Write-Log "  Installation completed in $([math]::Round($duration, 1)) seconds" -Level Info
+            
+            # Clean and log output (strip progress bars)
+            $cleanOutput = $output -replace '[\u2588\u2591\u258A-\u258F]', '' -replace '\s+', ' '
+            if ($cleanOutput.Trim()) {
+                Write-Log "  Output: $($cleanOutput.Trim())" -Level Info
+            }
+            Write-Log "  Exit Code: $exitCode" -Level Info
+            
+            # Interpret exit code
+            $exitCodeMsg = Get-WinGetExitCodeMessage -ExitCode $exitCode
+            
+            # Handle exit codes
+            if ($exitCode -eq 0) {
+                Write-Log "  ✓ Installed successfully" -Level Success
+                $success++
+            } elseif ($exitCode -in @(-1978335189, -1978335135)) {
+                Write-Log "  ✓ Already installed: $exitCodeMsg" -Level Info
+                $success++
+            } elseif ($exitCode -in @(-1978334967, -1978334966)) {
+                Write-Log "  ⚠ Installed but reboot required: $exitCodeMsg" -Level Warning
+                $success++
+            } elseif ($exitCode -in @(-1978334975, -1978334973)) {
+                Write-Log "  ⚠ Cannot install: $exitCodeMsg" -Level Warning
+                $failed++
             } else {
-                # Standard WinGet installation with proper output capture
-                $wingetArgs = @(
-                    "install"
-                    "--id", $app
-                    "--silent"
-                    "--accept-package-agreements"
-                    "--accept-source-agreements"
-                )
-                
-                if ($Force) { $wingetArgs += "--force" }
-                
-                Write-Log "  Executing: winget $($wingetArgs -join ' ')" -Level Info
-                $output = & winget $wingetArgs 2>&1 | Out-String
-                $exitCode = $LASTEXITCODE
-                
-                # Clean and log output (strip progress bars)
-                $cleanOutput = $output -replace '[\u2588\u2591\u258A-\u258F]', '' -replace '\s+', ' '
-                Write-Log "  WinGet Output: $($cleanOutput.Trim())" -Level Info
-                Write-Log "  WinGet Exit Code: $exitCode" -Level Info
-                
-                # Interpret exit code
-                $exitCodeMsg = Get-WinGetExitCodeMessage -ExitCode $exitCode
-                
-                # Handle exit codes with appropriate logic
-                if ($exitCode -eq 0) {
-                    Write-Log "  ✓ Installed successfully" -Level Success
-                    $success++
-                } elseif ($exitCode -eq -1978335189) {
-                    # No update available - this is fine
-                    Write-Log "  ✓ Already installed and up-to-date" -Level Info
-                    $success++
-                } elseif ($exitCode -eq -1978335135) {
-                    # Package already installed
-                    Write-Log "  ✓ Package already installed" -Level Info
-                    $success++
-                } elseif ($exitCode -in @(-1978334967, -1978334966)) {
-                    # Reboot required
-                    Write-Log "  ⚠ Installed but reboot required: $exitCodeMsg" -Level Warning
-                    $success++
-                } elseif ($exitCode -in @(-1978334975, -1978334973)) {
-                    # Application/file in use - treat as warning, may need retry
-                    Write-Log "  ⚠ Cannot install: $exitCodeMsg - try closing the application" -Level Warning
-                    $failed++
-                } else {
-                    Write-Log "  ✗ Failed: $exitCodeMsg (exit code: $exitCode)" -Level Warning
-                    $failed++
-                }
+                Write-Log "  ✗ Failed: $exitCodeMsg (exit code: $exitCode)" -Level Warning
+                $failed++
             }
         } catch {
-            Write-Log "  ✗ Exception during installation: $_" -Level Error
+            Write-Log "  ✗ Exception during installation: $($_.Exception.Message)" -Level Error
+            Write-Log "  Exception type: $($_.Exception.GetType().FullName)" -Level Error
+            if ($_.ScriptStackTrace) {
+                Write-Log "  Stack trace: $($_.ScriptStackTrace)" -Level Error
+            }
             $failed++
         }
+        
+        Write-Log "" -Level Info  # Blank line for readability
     }
     
     # Summary
@@ -314,7 +239,7 @@ try {
     exit $(if ($failed -gt 0) { 1 } else { 0 })
     
 } catch {
-    Write-Log "Installation process failed with exception: $_" -Level Error
+    Write-Log "Installation process failed with exception: $($_.Exception.Message)" -Level Error
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level Error
     exit 1
 } finally {
