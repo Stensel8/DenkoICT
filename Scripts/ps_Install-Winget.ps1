@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 5.2.2
+.VERSION 5.2.3
 
 .AUTHOR Sten Tijhuis
 
@@ -85,6 +85,7 @@
     "endLineNumber": 745,
 }]
 [Version 5.2.2] - Fixed 2 typos on line 1119 ".SYNOPSIS". and line 179 "Location".
+[Version 5.2.3] - Added Refresh environment PATH after winget installation to ensure winget is available in the current session.
 
 #>
 
@@ -118,7 +119,7 @@ This script is designed to be straightforward and easy to use, removing the hass
 .PARAMETER Help
     Displays the full help information for the script.
 .NOTES
-    Version      : 5.2.2
+    Version      : 5.2.3
     Created by   : Sten Tijhuis
     Original Author: https://github.com/asheroto/winget-install
 .LINK
@@ -1488,6 +1489,14 @@ try {
     Write-Section "Complete"
 
     Write-Output "winget installed successfully."
+
+    # ============================================================================ #
+    # Refresh environment PATH
+    # ============================================================================ #
+    
+    Write-Output "Refreshing environment PATH..."
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+    Write-Debug "Updated PATH for current session"
 
     # ============================================================================ #
     # Finished
