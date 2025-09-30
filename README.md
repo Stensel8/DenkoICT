@@ -13,6 +13,8 @@
 ## Why this project exists
 This repository is the centerpiece of my internship at Denko ICT. I joined a team where many device deployments and configuration tasks were still performed manually. I got the opportunity to re-evaluate these processes. By building a more modern automation toolkit, I want to prove that Windows 11 Pro devices can be deployed, secured, and made productive faster and with fewer errors, without relying on legacy tooling.
 
+I set up this GitHub repository myself as a central place to store technical documentation and scripts.
+
 ![Expected Result](Docs/Expected_Result.png)
 
 ## What this repository delivers
@@ -51,35 +53,25 @@ This repository is the centerpiece of my internship at Denko ICT. I joined a tea
 | Version | Status | Notes |
 | --- | --- | --- |
 | 25H2 | ✅ Tested | Primary release; all workflows validated and deemed functional. |
-| 24H2 | 🕒 Legacy | Supported for now, but the focus is on 25H2. |
+| 24H2 | 🕐 Legacy | Supported for now, but the focus is on 25H2. |
 | 23H2 | ❌ Unsupported | Cannot be guaranteed to work, since this OS is no longer maintained by Microsoft. |
 
 ### Hardware and scope
 | Device | Status | Notes |
 | --- | --- | --- |
-| HP ProBook G9 and higher | ✅ Passed | Fully automated deployment with HP CMSL & HPIA. |
-| HP EliteBook G9 and higher | ✅ Passed | Fully automated deployment with HP CMSL & HPIA. |
-| HP ZBook G9 and higher | ✅ Passed | Fully automated deployment with HP CMSL & HPIA. |
-| Dell Latitude 5000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell Latitude 7000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell Latitude 9000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell OptiPlex 3000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell OptiPlex 5000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell OptiPlex 7000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell OptiPlex Micro | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell OptiPlex Tower | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell OptiPlex Small Form Factor | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell OptiPlex All-In-One | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell Precision 3000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell Precision 5000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
-| Dell Precision 7000 series | ✅ Passed | Fully automated deployment with Dell Command \| Update CLI. |
+| HP ProBook 460 G11        | ✅ Passed | Fully automated deployment with HP CMSL \ HPIA. |
+| Dell Latitude 5440        | ✅ Passed | Fully automated deployment with Dell DCU-CLI.   |
 
-
-## Getting started
+## Customizing and usage
 1. Install [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) and run scripts from Windows Terminal.
 2. Clone this repository and review the scripts relevant to your deployment scenario.
-3. Launch `ps_Custom-Functions.ps1` with elevated privileges to orchestrate the preferred workflow.
-4. Customize the application and driver manifests inside `Scripts` to match your device catalogue.
+3. Customize scripts as needed
+4. Customize the autounattend.xml as desired
+
+## Execution
+1. Create a bootable USB drive with Windows 11 Pro 25H2 (e.g., via the [Media Creation Tool](https://www.microsoft.com/software-download/windows11)).
+2. Place the autounattend.xml in the root of the USB drive.
+3. Boot the target computer from the USB drive and follow the automated installation.
 
 > All scripts are designed to run without the need for Microsoft Deployment Toolkit, batch files, CMD, VBScript, PowerShell 2.0, or WMIC.
 
