@@ -357,15 +357,15 @@ try {
     Initialize-Directories
     Initialize-Logging
 
+    # Import custom functions (critical - must succeed)
+    Import-CustomFunctions
+
     # Initial network check with extended retry
     if (-not (Test-InternetConnection)) {
         Write-Host "[WARNING] No network connectivity detected. Some steps may fail." -ForegroundColor Yellow
         Write-Host "Waiting for network (up to 2 minutes)..." -ForegroundColor Cyan
         $null = Wait-ForNetworkStability -MaxRetries 12 -DelaySeconds 10
     }
-
-    # Import custom functions (critical - must succeed)
-    Import-CustomFunctions
 
     # Run deployment
     $null = Invoke-Deployment

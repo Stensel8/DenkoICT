@@ -27,23 +27,23 @@ Ik heb deze GitHub-repository zelf opgezet als centrale plek om technische docum
 - Gecentraliseerde logging en foutafhandeling met gedetailleerde exit code interpretatie
 - Documentatie waarmee collega's dezelfde moderne aanpak binnen en buiten Denko ICT kunnen overnemen
 
-## 🎯 Kernfunctionaliteiten
+## Kernfunctionaliteiten
 
-### **Deployment Orchestratie**
+### Deployment Orchestratie
 - Deployment gaat door zelfs als individuele stappen falen
 - Automatische retry-logica met netwerk validatie
 - Slaat afhankelijke stappen over wanneer vereisten falen (bijv. apps als WinGet faalt)
-- Visuele feedback met emoji's en kleurgecodeerde output
+- Visuele feedback met kleurgecodeerde output
 
-### **Tracking & Rapportage**
+### Tracking & Rapportage
 - Alle deployment stappen opgeslagen in `HKLM:\SOFTWARE\DenkoICT\Deployment\Steps`
 - Elke stap slaat status, tijdstempel, exit codes en foutmeldingen op
 - Tracking overleeft reboots en script crashes
 - Opgemaakte samenvattingen met `Show-DeploymentSummary`
-- Query registry op afstand om deployment status te controleren op elk apparaat
-- Genereer CSV-rapporten voor analyse over meerdere apparaten
+- Query registry op afstand om deployment status te controleren
+- Genereer CSV-rapporten voor analyse
 
-### **Code Kwaliteit**
+### Code Kwaliteit
 - Gecentraliseerde functies: 350+ regels duplicate code geëlimineerd door gedeelde library
 - Exit code interpretatie: WinGet en MSI exit codes vertaald naar leesbare beschrijvingen
 - Foutafhandeling: Try-catch-finally blokken met gedetailleerde logging
@@ -100,9 +100,9 @@ Ik heb deze GitHub-repository zelf opgezet als centrale plek om technische docum
 | --- | --- |
 | `autounattend.xml` | Baseline unattend-configuratie voor Windows 11 Pro imaging-scenario's |
 
-## 🚀 Hoe Deployment Werkt
+## Hoe Deployment Werkt
 
-### **Deployment Flow**
+### Deployment Flow
 ```
 1. Boot vanaf USB met autounattend.xml
 2. Windows 11 Pro 25H2 installeert automatisch
@@ -118,7 +118,7 @@ Ik heb deze GitHub-repository zelf opgezet als centrale plek om technische docum
 7. Slaat resultaten op in registry voor latere review
 ```
 
-### **Foutafhandeling**
+### Foutafhandeling
 Het deployment proces blijft doorgaan:
 - Als WinGet faalt, probeert het alternatieve installatiemethodes
 - Als drivers falen, installeren applicaties nog steeds
@@ -126,7 +126,7 @@ Het deployment proces blijft doorgaan:
 - Elke stap logt zijn status naar registry voordat verder gegaan wordt
 - Eindsamenvatting toont wat gelukt is, gefaald of overgeslagen
 
-### **Netwerkvalidatie**
+### Netwerkvalidatie
 Ingebouwde netwerkvalidatie voorkomt fouten:
 ```powershell
 # Controleert netwerk voor kritische operaties
@@ -136,9 +136,9 @@ Wait-ForNetworkStability -MaxRetries 5 -DelaySeconds 10
 Wait-ForNetworkStability -ContinuousCheck
 ```
 
-## 📊 Deployment Tracking
+## Deployment Tracking
 
-### **Registry Structuur**
+### Registry Structuur
 Elke deployment stap wordt getrackt in de Windows Registry:
 ```
 HKLM:\SOFTWARE\DenkoICT\
@@ -162,23 +162,23 @@ HKLM:\SOFTWARE\DenkoICT\
         └── ExitCode = -1978334969
 ```
 
-### **Deployment Status Controleren**
+### Deployment Status Controleren
 
-#### **Tijdens Deployment**
-Real-time visuele feedback:
+#### Tijdens Deployment
+Real-time feedback:
 ```
-🔄 Starting: WinGet Installation
-✓ Completed: WinGet Installation
+Starting: WinGet Installation
+Completed: WinGet Installation
 
-🔄 Starting: Driver Updates
-✓ Completed: Driver Updates
+Starting: Driver Updates
+Completed: Driver Updates
 
-🔄 Starting: Application Installation
-✗ Failed: Application Installation
+Starting: Application Installation
+Failed: Application Installation
   Error details: Network connection lost
 ```
 
-#### **Na Deployment**
+#### Na Deployment
 Samenvatting:
 ```
 ================================================================================
@@ -186,36 +186,36 @@ Samenvatting:
 ================================================================================
 
   Total Steps: 5
-  ✓ Successful: 4
-  ✗ Failed: 1
+  Successful: 4
+  Failed: 1
 
   DETAILED STEP RESULTS:
   ----------------------------------------------------------------------------
-  ✓ WinGet Installation
+  WinGet Installation
       Time: 2025-10-01 14:23:15
-  ✓ Driver Updates
+  Driver Updates
       Time: 2025-10-01 14:25:42
-  ✓ Application Installation
+  Application Installation
       Time: 2025-10-01 14:32:18
-  ✓ Wallpaper Configuration
+  Wallpaper Configuration
       Time: 2025-10-01 14:33:05
-  ✗ Windows Updates
+  Windows Updates (FAILED)
       Time: 2025-10-01 14:35:01
       Error: Network not available
       Exit Code: -1978334969
 
   ----------------------------------------------------------------------------
 
-  ⚠ Deployment completed with 1 failure(s).
-  Your device may not be fully configured.
-  Please review the failed steps above and check the log file.
+  Deployment completed with 1 failure.
+  Device may not be fully configured.
+  Review failed steps and check log file.
 
-  Deployment status stored in: HKLM:\SOFTWARE\DenkoICT\Deployment\Steps
+  Deployment status: HKLM:\SOFTWARE\DenkoICT\Deployment\Steps
 
 ================================================================================
 ```
 
-#### **Status Later Opvragen**
+#### Status Later Opvragen
 ```powershell
 # Methode 1: Snelle PowerShell controle
 Get-ItemProperty 'HKLM:\SOFTWARE\DenkoICT\Deployment\Steps\*'
@@ -231,36 +231,36 @@ Get-DeploymentStepStatus -StepName "WinGet Installation"
 Get-AllDeploymentSteps | Export-Csv -Path "C:\DeploymentReport.csv"
 ```
 
-## Compatibiliteit 🧪
+## Compatibiliteit
 
 ### Windows 11-validatie
 | Versie | Status | Notities |
 | --- | --- | --- |
-| 25H2 | ✅ Getest | Primaire release; alle workflows werkend |
-| 24H2 | 🕒 Legacy | Wordt voorlopig ondersteund, maar de focus ligt op 25H2 |
-| 23H2 | ❌ Niet ondersteund | Niet gegarandeerd functioneel, want deze release wordt niet langer onderhouden door Microsoft |
+| 25H2 | Getest | Primaire release; alle workflows werkend |
+| 24H2 | Legacy | Wordt voorlopig ondersteund, focus ligt op 25H2 |
+| 23H2 | Niet ondersteund | Niet gegarandeerd functioneel, release niet langer onderhouden |
 
 ### Hardware en scope
 | Device | Status | Notities |
 | --- | --- | --- |
-| HP ProBook 460 G11        | ✅ Geslaagd | Volledig geautomatiseerde uitrol met HP CMSL / HPIA |
-| Dell Latitude 5440        | ✅ Geslaagd | Volledig geautomatiseerde uitrol met Dell DCU-CLI |
+| HP ProBook 460 G11        | Geslaagd | Volledig geautomatiseerde uitrol met HP CMSL / HPIA |
+| Dell Latitude 5440        | Geslaagd | Volledig geautomatiseerde uitrol met Dell DCU-CLI |
 
-## 📖 Gebruiksgids
+## Gebruiksgids
 
-### **Snel Starten**
+### Snel Starten
 1. Installeer [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) en voer scripts uit via Windows Terminal
 2. Clone deze repository: `git clone https://github.com/Stensel8/DenkoICT.git`
 3. Bekijk en pas scripts aan voor jouw omgeving
 4. Pas `autounattend.xml` aan naar wens
 
-### **Deployment Uitvoering**
+### Deployment Uitvoering
 1. Maak een bootable USB-stick met Windows 11 Pro 25H2 via de [Media Creation Tool](https://www.microsoft.com/software-download/windows11)
 2. Plaats `autounattend.xml` in de root van de USB-stick
 3. Start de doelcomputer op vanaf de USB-stick en volg de automatische installatie
 4. Na OOBE, voer `ps_Deploy-Device.ps1` uit (of configureer automatische start)
 
-### **Individuele Scripts Uitvoeren**
+### Individuele Scripts Uitvoeren
 Alle scripts ondersteunen standaard PowerShell parameters:
 ```powershell
 # Applicaties installeren met logging
@@ -279,7 +279,7 @@ Alle scripts ondersteunen standaard PowerShell parameters:
 .\ps_Get-InstalledSoftware.ps1 -ExportPath "C:\Inventory.csv"
 ```
 
-### **Monitoring en Troubleshooting**
+### Monitoring en Troubleshooting
 ```powershell
 # Deployment samenvatting bekijken
 . .\ps_Custom-Functions.ps1
@@ -299,9 +299,9 @@ Clear-DeploymentHistory -WhatIf  # Preview
 Clear-DeploymentHistory          # Uitvoeren
 ```
 
-## 🔧 Geavanceerde Functies
+## Geavanceerde Functies
 
-### **Exit Code Interpretatie**
+### Exit Code Interpretatie
 Scripts vertalen automatisch exit codes:
 ```powershell
 # WinGet exit codes
@@ -313,29 +313,7 @@ Get-MSIExitCodeDescription -ExitCode 1603
 # Geeft terug: ErrorCode=1603, Name=ERROR_INSTALL_FAILURE, Description=Fatal error during installation
 ```
 
-### **Netwerk Retry Configuratie**
-Pas netwerkgedrag aan in `ps_Deploy-Device.ps1`:
-```powershell
-# Meer retries voor instabiele netwerken
-.\ps_Deploy-Device.ps1 -NetworkRetryCount 10 -NetworkRetryDelaySeconds 15
-```
-
-### **Veilige Script Uitvoering**
-Error handling wrapper:
-```powershell
-$result = Invoke-SafeScriptBlock -OperationName "Custom Operatie" -ScriptBlock {
-    # Jouw code hier
-    Install-Something
-} -Critical  # Voeg -Critical toe om te falen bij error
-
-if ($result.Success) {
-    Write-Host "Operatie geslaagd: $($result.Result)"
-} else {
-    Write-Host "Operatie gefaald: $($result.Error)"
-}
-```
-
-## 📁 Logbestanden
+## Logbestanden
 
 Alle scripts loggen naar `C:\DenkoICT\Logs\`:
 - **Deployment-YYYYMMDD-HHmmss.log** - Hoofd deployment transcript
@@ -345,15 +323,6 @@ Alle scripts loggen naar `C:\DenkoICT\Logs\`:
 - **\*.txt** - MSI installatie logs (genoemd naar MSI bestand)
 
 Logs roteren automatisch bij overschrijding van 10MB.
-
-## Roadmap en bijdragen
-- ✅ ~~Deployment tracking en status monitoring toevoegen~~ (Voltooid v3.0.0)
-- ✅ ~~Gemeenschappelijke code patterns centraliseren~~ (Voltooid v3.0.0)
-- ✅ ~~Error handling implementeren~~ (Voltooid v3.0.0)
-- 🔄 Optionele Intune-scripts en templates toevoegen voor hybride omgevingen
-- 🔄 Integratie patronen bouwen met KaseyaOne en andere RMM-platformen
-- 🔄 Geautomatiseerd test framework toevoegen
-- 🔄 Web dashboard maken voor deployment status monitoring
 
 Feedback, feature requests en pull requests zijn van harte welkom. Open gerust een [issue](https://github.com/Stensel8/DenkoICT/issues) of stuur me een berichtje.
 
