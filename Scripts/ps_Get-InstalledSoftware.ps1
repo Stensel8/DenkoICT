@@ -1,48 +1,80 @@
+<#PSScriptInfo
+
+.VERSION 1.3.0
+
+.AUTHOR Sten Tijhuis
+
+.COMPANYNAME Denko ICT
+
+.TAGS PowerShell Windows Software Inventory Registry AppX Reporting
+
+.PROJECTURI https://github.com/Stensel8/DenkoICT
+
+.RELEASENOTES
+[Version 1.0.0] - Initial release
+[Version 1.1.0] - Added filtering for updates and improved date parsing
+[Version 1.2.0] - Added option to export to CSV
+[Version 1.2.1] - Fixed minor bugs regarding sorting/filtering and display
+[Version 1.3.0] - Added PSScriptInfo metadata and improved error handling
+#>
+
+#requires -Version 5.1
+
 <#
 .SYNOPSIS
-    Gets all installed software including Store apps and Win32 programs.
+    Inventories all installed software on the system.
 
 .DESCRIPTION
-    Queries registry for traditional Win32 apps and Windows Store for UWP/MSIX apps.
-    Combines results into unified list with consistent properties.
+    Comprehensive software inventory tool that queries both traditional Win32
+    applications (via registry) and modern Store apps (via AppX packages).
+    Combines results into a unified list with consistent properties.
+
+    Features:
+    - Win32 application detection (via registry)
+    - Store/UWP/MSIX app detection
+    - Filtering options (Win32 only, Store only, exclude updates)
+    - CSV export capability
+    - Detailed property reporting
 
 .PARAMETER ExportPath
-    Export results to CSV file.
+    Export results to CSV file at specified path.
 
 .PARAMETER IncludeUpdates
-    Include Windows Updates in results.
+    Include Windows Updates in results (excluded by default).
 
 .PARAMETER StoreAppsOnly
-    Show only Store/UWP apps.
+    Show only Windows Store/UWP/MSIX apps.
 
 .PARAMETER Win32Only
-    Show only traditional Win32 apps.
+    Show only traditional Win32 applications.
 
 .PARAMETER SkipLogging
     Skip transcript logging.
 
 .EXAMPLE
     .\ps_Get-InstalledSoftware.ps1
-    Shows all installed software.
+    Displays all installed software (Win32 + Store apps).
 
 .EXAMPLE
     .\ps_Get-InstalledSoftware.ps1 -StoreAppsOnly
-    Shows only Store apps.
+    Shows only Windows Store apps.
 
 .EXAMPLE
-    .\ps_Get-InstalledSoftware.ps1 -ExportPath "C:\software.csv"
-    Exports all software to CSV.
-    
-.RELEASENOTES
-    1.0.0 Initial release
-    1.1.0 Added filtering for updates and improved date parsing
-    1.2.0 Added option to export to CSV
-    1.2.1 Fixed minor bugs regarding sorting/filtering and display
+    .\ps_Get-InstalledSoftware.ps1 -ExportPath "C:\Inventory\software.csv"
+    Exports complete software inventory to CSV.
+
+.EXAMPLE
+    .\ps_Get-InstalledSoftware.ps1 -Win32Only -IncludeUpdates
+    Shows Win32 apps including updates.
 
 .NOTES
-    Version:  1.2.1
-    Author:   Sten Tijhuis
-    Company:  Denko ICT
+    Version      : 1.3.0
+    Created by   : Sten Tijhuis
+    Company      : Denko ICT
+    Requires     : PowerShell 5.1+
+
+.LINK
+    Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
 [CmdletBinding()]

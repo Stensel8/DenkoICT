@@ -34,10 +34,10 @@ param(
     [string]$LogName = 'OOBE-Requirement.log'
 )
 
-$toolkitPath = Join-Path -Path $PSScriptRoot -ChildPath 'Custom-Functions.ps1'
+$toolkitPath = Join-Path -Path $PSScriptRoot -ChildPath 'ps_Custom-Functions.ps1'
 
 if (-not (Test-Path -Path $toolkitPath)) {
-  throw "Unable to locate Custom-Functions.ps1 at path '$toolkitPath'."
+  throw "Unable to locate ps_Custom-Functions.ps1 at path '$toolkitPath'."
 }
 
 $arguments = @{

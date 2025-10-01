@@ -1,11 +1,42 @@
+<#PSScriptInfo
+
+.VERSION 2.1.0
+
+.AUTHOR Sten Tijhuis
+
+.COMPANYNAME Denko ICT
+
+.TAGS PowerShell Windows Drivers Dell HP DCU HPIA Deployment
+
+.PROJECTURI https://github.com/Stensel8/DenkoICT
+
+.RELEASENOTES
+[Version 1.0.0] - Initial release
+[Version 1.1.0] - Added HP support and improved logging
+[Version 2.0.0] - Improved error handling, printing and logging
+[Version 2.1.0] - Added PSScriptInfo metadata and parameter validation
+#>
+
+#requires -Version 5.1
+
 <#
 .SYNOPSIS
-    Install vendor driver update tools and run updates for Dell and HP systems.
+    Installs vendor-specific driver update tools and updates drivers.
 
 .DESCRIPTION
-    Detects system manufacturer and runs appropriate driver update tool:
+    Automatically detects system manufacturer (Dell or HP) and installs/runs
+    the appropriate driver update tool with vendor-specific optimizations.
+
+    Supported Vendors:
     - Dell: Dell Command Update (DCU)
-    - HP: HP Image Assistant (primary) or HP CMSL (fallback)
+    - HP: HP Image Assistant (HPIA) with fallback to HP CMSL
+
+    Features:
+    - Automatic manufacturer detection
+    - Vendor-specific driver tool installation
+    - Automated driver updates
+    - Detailed logging and error handling
+    - Integration with Intune deployment tracking
 
 .PARAMETER SkipDell
     Skip Dell driver updates even if Dell system is detected.
@@ -14,24 +45,31 @@
     Skip HP driver updates even if HP system is detected.
 
 .PARAMETER MaxDrivers
-    Maximum number of HP drivers to install (default: 10).
+    Maximum number of HP drivers to install via CMSL (default: 10).
 
 .PARAMETER SkipLogging
     Skip transcript logging.
 
 .EXAMPLE
     .\ps_Install-Drivers.ps1
-    Runs the appropriate driver update tool based on detected system manufacturer.
+    Automatically detects manufacturer and updates drivers.
 
-.RELEASENOTES
-    1.0.0 Initial release
-    1.1.0 Added HP support and improved logging
-    2.0.0 Improved error handling, printing and logging
+.EXAMPLE
+    .\ps_Install-Drivers.ps1 -SkipDell
+    Skips driver updates on Dell systems.
+
+.EXAMPLE
+    .\ps_Install-Drivers.ps1 -MaxDrivers 20
+    Sets maximum HP drivers to 20 (via CMSL).
 
 .NOTES
-    Version:  2.0.0
-    Author:   Sten Tijhuis
-    Company:  Denko ICT
+    Version      : 2.1.0
+    Created by   : Sten Tijhuis
+    Company      : Denko ICT
+    Requires     : Admin rights, WinGet (for Dell), Internet connection
+
+.LINK
+    Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
 [CmdletBinding()]

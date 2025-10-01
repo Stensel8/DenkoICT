@@ -1,40 +1,69 @@
+<#PSScriptInfo
+
+.VERSION 2.1.0
+
+.AUTHOR Sten Tijhuis
+
+.COMPANYNAME Denko ICT
+
+.TAGS PowerShell Windows WinGet Updates Applications Maintenance
+
+.PROJECTURI https://github.com/Stensel8/DenkoICT
+
+.RELEASENOTES
+[Version 1.0.0] - Initial Release. Updates all apps via WinGet
+[Version 2.0.0] - Improved script using best practices and cmdletbinding
+[Version 2.1.0] - Added PSScriptInfo metadata and improved error handling
+#>
+
+#requires -Version 5.1
+
 <#
 .SYNOPSIS
-    Updates all applications via WinGet.
+    Updates all applications via WinGet package manager.
 
 .DESCRIPTION
-    Checks for and installs available updates for applications managed by WinGet.
+    Scans for available application updates using Windows Package Manager (WinGet)
+    and installs them automatically. Supports exclusion lists and dry-run mode.
+
+    Features:
+    - Automatic update detection and installation
+    - Application exclusion support
+    - Show-only mode for preview
+    - Detailed logging with update statistics
+    - Integration with Intune deployment tracking
 
 .PARAMETER ExcludeApps
-    Array of application IDs to exclude from updates.
+    Array of WinGet application IDs to exclude from updates.
+    Useful for pinning specific application versions.
 
 .PARAMETER ShowOnly
-    Only shows available updates without installing them.
+    Display available updates without installing them.
+    Useful for preview and planning purposes.
 
 .PARAMETER SkipLogging
-    Skip transcript logging for quick execution.
+    Skip transcript logging for faster execution.
 
 .EXAMPLE
     .\ps_Update-AllApps.ps1
-    Updates all applications.
+    Updates all applications with available updates.
 
 .EXAMPLE
     .\ps_Update-AllApps.ps1 -ShowOnly
-    Shows available updates without installing.
+    Lists available updates without installing them.
 
 .EXAMPLE
     .\ps_Update-AllApps.ps1 -ExcludeApps @("Mozilla.Firefox", "Google.Chrome")
-    Updates all except Firefox and Chrome.
-
-.RELEASENOTES
-[Version 1.0.0] - Initial Release. Updates all apps via WinGet.
-[Version 2.0.0] - Improved script using best practises and advanced features such as cmdletbinding.
-
+    Updates all applications except Firefox and Chrome.
 
 .NOTES
-    Author:   Sten Tijhuis
-    Company:  Denko ICT
-    Requires: WinGet, Admin rights
+    Version      : 2.1.0
+    Created by   : Sten Tijhuis
+    Company      : Denko ICT
+    Requires     : Admin rights, WinGet installed
+
+.LINK
+    Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
 #requires -Version 5.1
