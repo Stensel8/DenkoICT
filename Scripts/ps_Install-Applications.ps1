@@ -1,42 +1,74 @@
+<#PSScriptInfo
+
+.VERSION 2.3.0
+
+.AUTHOR Sten Tijhuis
+
+.COMPANYNAME Denko ICT
+
+.TAGS PowerShell Windows WinGet Applications Deployment Installation
+
+.PROJECTURI https://github.com/Stensel8/DenkoICT
+
+.RELEASENOTES
+[Version 1.0.0] - Initial release
+[Version 1.1.0] - Added PowerShell 7 installation and improved logging
+[Version 2.0.0] - Added WinGet support and enhanced error handling
+[Version 2.1.0] - Improved the handling of Teams installation
+[Version 2.1.1] - Bugfix: Fixed installation not executing (Start-Process issue) + improved logging with output capture
+[Version 2.1.2] - Improved logging and exit code handling for WinGet installations
+[Version 2.1.3] - Added refresh of environment PATH after winget installation
+[Version 2.2.0] - Simplified installation flow
+[Version 2.3.0] - Refactored to use centralized WinGet exit code descriptions from ps_Custom-Functions.ps1
+#>
+
+#requires -Version 5.1
+
 <#
 .SYNOPSIS
-    Installs applications via WinGet.
+    Installs applications via WinGet package manager.
 
 .DESCRIPTION
-    Installs applications using WinGet package manager.
+    Automates application installation using Windows Package Manager (WinGet).
+    Supports ARM64 architecture detection, exit code interpretation, and detailed logging.
+
+    Features:
+    - Automatic architecture detection (x64/ARM64)
+    - Intelligent exit code handling
+    - Detailed installation logging with duration tracking
+    - Force reinstall capability
+    - Integration with Intune deployment tracking
 
 .PARAMETER Applications
     Array of WinGet application IDs to install.
+    Default: Microsoft.PowerShell, VCRedist, Office, Teams, OneDrive, 7zip
 
 .PARAMETER Force
-    Force reinstall even if already installed.
+    Force reinstall applications even if already installed.
 
 .PARAMETER SkipLogging
-    Skip transcript logging.
+    Skip transcript logging to file.
 
 .EXAMPLE
     .\ps_Install-Applications.ps1
-    Installs default applications.
+    Installs default application bundle.
 
 .EXAMPLE
-    .\ps_Install-Applications.ps1 -Applications @("7zip.7zip")
-    Installs only 7zip.
+    .\ps_Install-Applications.ps1 -Applications @("7zip.7zip", "Microsoft.PowerShell")
+    Installs only specified applications.
 
-.RELEASENOTES
- [Version 1.0.0] - Initial release
- [Version 1.1.0] - Added PowerShell 7 installation and improved logging
- [Version 2.0.0] - Added WinGet support and enhanced error handling
- [Version 2.1.0] - Improved the handling of Teams installation
- [Version 2.1.1] - Bugfix: Fixed installation not executing (Start-Process issue) + improved logging with output capture
- [Version 2.1.2] - Improved logging and exit code handling for WinGet installations
- [Version 2.1.3] - Added refresh of environment PATH after winget installation to ensure winget is available in the current session.
- [Version 2.2.0] - Simplified installation flow
- 
+.EXAMPLE
+    .\ps_Install-Applications.ps1 -Force
+    Reinstalls all default applications even if already installed.
+
 .NOTES
-    Version:  2.2.0
-    Author:   Sten Tijhuis
-    Company:  Denko ICT
-    Requires: Admin rights, WinGet
+    Version      : 2.3.0
+    Created by   : Sten Tijhuis
+    Company      : Denko ICT
+    Requires     : Admin rights, WinGet installed
+
+.LINK
+    Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
 [CmdletBinding()]
@@ -57,48 +89,6 @@ param(
 #requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
-
-# WinGet exit codes mapping
-$script:WinGetExitCodes = @{
-    0 = "Success"
-    -1978335231 = "Internal Error"
-    -1978335230 = "Invalid command line arguments"
-    -1978335229 = "Executing command failed"
-    -1978335226 = "Running ShellExecute failed (installer failed)"
-    -1978335224 = "Downloading installer failed"
-    -1978335216 = "No applicable installer for the current system"
-    -1978335215 = "Installer hash mismatch"
-    -1978335212 = "No packages found"
-    -1978335210 = "Multiple packages found"
-    -1978335207 = "Command requires administrator privileges"
-    -1978335189 = "No applicable update found (already up-to-date)"
-    -1978335188 = "Upgrade all completed with failures"
-    -1978335174 = "Operation blocked by Group Policy"
-    -1978335135 = "Package already installed"
-    -1978334975 = "Application currently running"
-    -1978334974 = "Another installation in progress"
-    -1978334973 = "File in use"
-    -1978334972 = "Missing dependency"
-    -1978334971 = "Disk full"
-    -1978334970 = "Insufficient memory"
-    -1978334969 = "No network connection"
-    -1978334967 = "Reboot required to finish"
-    -1978334966 = "Reboot required to install"
-    -1978334964 = "Cancelled by user"
-    -1978334963 = "Another version already installed"
-    -1978334962 = "Downgrade attempt (higher version installed)"
-    -1978334961 = "Blocked by policy"
-    -1978334960 = "Failed to install dependencies"
-}
-
-function Get-WinGetExitCodeMessage {
-    param([int]$ExitCode)
-    
-    if ($script:WinGetExitCodes.ContainsKey($ExitCode)) {
-        return $script:WinGetExitCodes[$ExitCode]
-    }
-    return "Unknown exit code"
-}
 
 # Load custom functions
 $functionsPath = Join-Path $PSScriptRoot 'ps_Custom-Functions.ps1'
@@ -194,9 +184,9 @@ try {
             }
             
             Write-Log "  Exit Code: $exitCode" -Level Info
-            
-            # Interpret exit code
-            $exitCodeMsg = Get-WinGetExitCodeMessage -ExitCode $exitCode
+
+            # Interpret exit code using centralized function
+            $exitCodeMsg = Get-WinGetExitCodeDescription -ExitCode $exitCode
             
             # Handle exit codes
             if ($exitCode -eq 0) {
