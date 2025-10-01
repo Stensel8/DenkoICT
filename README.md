@@ -27,15 +27,15 @@ I set up this GitHub repository myself as a central place to store technical doc
 - Centralized logging and error handling with detailed exit code interpretation
 - Documentation to help colleagues adopt the same modern approach inside and outside Denko ICT
 
-## 🎯 Key Features
+## Key Features
 
-### **Deployment Orchestration**
+### Deployment Orchestration
 - Deployment continues even if individual steps fail
 - Automatic retry logic with network validation
 - Skips dependent steps when prerequisites fail (e.g., apps if WinGet fails)
-- Visual feedback with emojis and color-coded output
+- Visual feedback with color-coded output
 
-### **Tracking & Reporting**
+### Tracking & Reporting
 - All deployment steps recorded in `HKLM:\SOFTWARE\DenkoICT\Deployment\Steps`
 - Each step stores status, timestamp, exit codes, and error messages
 - Tracking survives reboots and script crashes
@@ -43,7 +43,7 @@ I set up this GitHub repository myself as a central place to store technical doc
 - Query registry remotely to check deployment status on any device
 - Generate CSV reports for analysis across multiple devices
 
-### **Code Quality**
+### Code Quality
 - Centralized functions: 350+ lines of duplicate code eliminated through shared library
 - Exit code interpretation: WinGet and MSI exit codes translated to readable descriptions
 - Error handling: Try-catch-finally blocks with detailed logging
@@ -100,9 +100,9 @@ I set up this GitHub repository myself as a central place to store technical doc
 | --- | --- |
 | `autounattend.xml` | Baseline unattend configuration for Windows 11 Pro imaging scenarios |
 
-## 🚀 How Deployment Works
+## How Deployment Works
 
-### **Deployment Flow**
+### Deployment Flow
 ```
 1. Boot from USB with autounattend.xml
 2. Windows 11 Pro 25H2 installs automatically
@@ -118,7 +118,7 @@ I set up this GitHub repository myself as a central place to store technical doc
 7. Stores results in registry for later review
 ```
 
-### **Error Handling**
+### Error Handling
 The deployment process keeps going:
 - If WinGet fails, it tries alternative installation methods
 - If drivers fail, applications still install
@@ -126,7 +126,7 @@ The deployment process keeps going:
 - Every step logs its status to registry before continuing
 - Final summary shows what succeeded, failed, or was skipped
 
-### **Network Validation**
+### Network Validation
 Built-in network validation prevents failures:
 ```powershell
 # Checks network before critical operations
@@ -136,9 +136,9 @@ Wait-ForNetworkStability -MaxRetries 5 -DelaySeconds 10
 Wait-ForNetworkStability -ContinuousCheck
 ```
 
-## 📊 Deployment Tracking
+## Deployment Tracking
 
-### **Registry Structure**
+### Registry Structure
 Every deployment step is tracked in the Windows Registry:
 ```
 HKLM:\SOFTWARE\DenkoICT\
@@ -162,23 +162,23 @@ HKLM:\SOFTWARE\DenkoICT\
         └── ExitCode = -1978334969
 ```
 
-### **Checking Deployment Status**
+### Checking Deployment Status
 
-#### **During Deployment**
-Real-time visual feedback:
+#### During Deployment
+Real-time feedback:
 ```
-🔄 Starting: WinGet Installation
-✓ Completed: WinGet Installation
+Starting: WinGet Installation
+Completed: WinGet Installation
 
-🔄 Starting: Driver Updates
-✓ Completed: Driver Updates
+Starting: Driver Updates
+Completed: Driver Updates
 
-🔄 Starting: Application Installation
-✗ Failed: Application Installation
+Starting: Application Installation
+Failed: Application Installation
   Error details: Network connection lost
 ```
 
-#### **After Deployment**
+#### After Deployment
 Summary:
 ```
 ================================================================================
@@ -186,36 +186,36 @@ Summary:
 ================================================================================
 
   Total Steps: 5
-  ✓ Successful: 4
-  ✗ Failed: 1
+  Successful: 4
+  Failed: 1
 
   DETAILED STEP RESULTS:
   ----------------------------------------------------------------------------
-  ✓ WinGet Installation
+  WinGet Installation
       Time: 2025-10-01 14:23:15
-  ✓ Driver Updates
+  Driver Updates
       Time: 2025-10-01 14:25:42
-  ✓ Application Installation
+  Application Installation
       Time: 2025-10-01 14:32:18
-  ✓ Wallpaper Configuration
+  Wallpaper Configuration
       Time: 2025-10-01 14:33:05
-  ✗ Windows Updates
+  Windows Updates (FAILED)
       Time: 2025-10-01 14:35:01
       Error: Network not available
       Exit Code: -1978334969
 
   ----------------------------------------------------------------------------
 
-  ⚠ Deployment completed with 1 failure(s).
-  Your device may not be fully configured.
-  Please review the failed steps above and check the log file.
+  Deployment completed with 1 failure.
+  Device may not be fully configured.
+  Review failed steps and check log file.
 
-  Deployment status stored in: HKLM:\SOFTWARE\DenkoICT\Deployment\Steps
+  Deployment status: HKLM:\SOFTWARE\DenkoICT\Deployment\Steps
 
 ================================================================================
 ```
 
-#### **Query Status Later**
+#### Query Status Later
 ```powershell
 # Method 1: Quick PowerShell check
 Get-ItemProperty 'HKLM:\SOFTWARE\DenkoICT\Deployment\Steps\*'
@@ -231,36 +231,36 @@ Get-DeploymentStepStatus -StepName "WinGet Installation"
 Get-AllDeploymentSteps | Export-Csv -Path "C:\DeploymentReport.csv"
 ```
 
-## Compatibility 🧪
+## Compatibility
 
 ### Windows 11 validation
 | Version | Status | Notes |
 | --- | --- | --- |
-| 25H2 | ✅ Tested | Primary release; all workflows validated and functional |
-| 24H2 | 🕐 Legacy | Supported for now, but the focus is on 25H2 |
-| 23H2 | ❌ Unsupported | Cannot be guaranteed to work, since this OS is no longer maintained by Microsoft |
+| 25H2 | Tested | Primary release; all workflows validated |
+| 24H2 | Legacy | Supported for now, focus is on 25H2 |
+| 23H2 | Unsupported | Not guaranteed to work, OS no longer maintained by Microsoft |
 
 ### Hardware and scope
 | Device | Status | Notes |
 | --- | --- | --- |
-| HP ProBook 460 G11        | ✅ Passed | Fully automated deployment with HP CMSL / HPIA |
-| Dell Latitude 5440        | ✅ Passed | Fully automated deployment with Dell DCU-CLI |
+| HP ProBook 460 G11        | Passed | Fully automated deployment with HP CMSL / HPIA |
+| Dell Latitude 5440        | Passed | Fully automated deployment with Dell DCU-CLI |
 
-## 📖 Usage Guide
+## Usage Guide
 
-### **Quick Start**
+### Quick Start
 1. Install [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) and run scripts from Windows Terminal
 2. Clone this repository: `git clone https://github.com/Stensel8/DenkoICT.git`
 3. Review and customize scripts for your environment
 4. Customize `autounattend.xml` as desired
 
-### **Deployment Execution**
+### Deployment Execution
 1. Create a bootable USB drive with Windows 11 Pro 25H2 using the [Media Creation Tool](https://www.microsoft.com/software-download/windows11)
 2. Place `autounattend.xml` in the root of the USB drive
 3. Boot the target computer from the USB drive and follow the automated installation
 4. After OOBE, run `ps_Deploy-Device.ps1` (or configure it to run automatically)
 
-### **Running Individual Scripts**
+### Running Individual Scripts
 All scripts support standard PowerShell parameters:
 ```powershell
 # Install applications with logging
@@ -279,7 +279,7 @@ All scripts support standard PowerShell parameters:
 .\ps_Get-InstalledSoftware.ps1 -ExportPath "C:\Inventory.csv"
 ```
 
-### **Monitoring and Troubleshooting**
+### Monitoring and Troubleshooting
 ```powershell
 # Check deployment summary
 . .\ps_Custom-Functions.ps1
@@ -299,9 +299,9 @@ Clear-DeploymentHistory -WhatIf  # Preview
 Clear-DeploymentHistory          # Execute
 ```
 
-## 🔧 Advanced Features
+## Advanced Features
 
-### **Exit Code Interpretation**
+### Exit Code Interpretation
 Scripts automatically translate exit codes:
 ```powershell
 # WinGet exit codes
@@ -313,14 +313,14 @@ Get-MSIExitCodeDescription -ExitCode 1603
 # Returns: ErrorCode=1603, Name=ERROR_INSTALL_FAILURE, Description=Fatal error during installation
 ```
 
-### **Network Retry Configuration**
+### Network Retry Configuration
 Customize network behavior in `ps_Deploy-Device.ps1`:
 ```powershell
 # Increase retries for unstable networks
 .\ps_Deploy-Device.ps1 -NetworkRetryCount 10 -NetworkRetryDelaySeconds 15
 ```
 
-### **Safe Script Execution**
+### Safe Script Execution
 Error handling wrapper:
 ```powershell
 $result = Invoke-SafeScriptBlock -OperationName "Custom Operation" -ScriptBlock {
@@ -335,7 +335,7 @@ if ($result.Success) {
 }
 ```
 
-## 📁 Log Files
+## Log Files
 
 All scripts log to `C:\DenkoICT\Logs\`:
 - **Deployment-YYYYMMDD-HHmmss.log** - Main deployment transcript
@@ -345,15 +345,6 @@ All scripts log to `C:\DenkoICT\Logs\`:
 - **\*.txt** - MSI installation logs (named after MSI file)
 
 Logs automatically rotate when exceeding 10MB.
-
-## Roadmap and contributions
-- ✅ ~~Add deployment tracking and status monitoring~~ (Completed v3.0.0)
-- ✅ ~~Centralize common code patterns~~ (Completed v3.0.0)
-- ✅ ~~Implement error handling~~ (Completed v3.0.0)
-- 🔄 Add optional Intune scripts/templates for hybrid environments
-- 🔄 Build integration patterns with KaseyaOne and other RMM platforms
-- 🔄 Add automated testing framework
-- 🔄 Create web dashboard for deployment status monitoring
 
 Feedback, feature requests, and pull requests are welcome. Please [open an issue](https://github.com/Stensel8/DenkoICT/issues) to start. You can also ping me.
 
