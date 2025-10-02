@@ -127,58 +127,198 @@ function Stop-DeploymentLogging {
     }
 }
 
-function Get-DeploymentScript {
+function Get-ScriptFromGitHub {
     <#
     .SYNOPSIS
-        Gets a deployment script, preferring local version over GitHub download.
+        Downloads a script from GitHub with retry logic.
     #>
     [CmdletBinding()]
-    [OutputType([string])]
+    [OutputType([bool])]
     param(
         [Parameter(Mandatory)]
-        [string]$ScriptName
+        [ValidateNotNullOrEmpty()]
+        [string]$ScriptName,
+
+        [int]$MaxRetries = 3
     )
-
-    # Check for local version first
-    $scriptDir = Split-Path -Parent $PSCommandPath
-    $localScript = Join-Path $scriptDir $ScriptName
-
-    if (Test-Path $localScript) {
-        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using local script: $ScriptName" -ForegroundColor Cyan
-        return $localScript
-    }
-
-    # Download from GitHub if not found locally
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Local script not found, downloading from GitHub..." -ForegroundColor Yellow
 
     $url = "$ScriptBaseUrl/$ScriptName"
     $localPath = Join-Path $script:DownloadDirectory $ScriptName
 
     $attempt = 0
-    $maxRetries = 3
 
     do {
         $attempt++
 
         try {
-            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Downloading $ScriptName (attempt $attempt/$maxRetries)..." -ForegroundColor Cyan
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Downloading $ScriptName (attempt $attempt/$MaxRetries)..." -ForegroundColor Cyan
 
             $webClient = New-Object System.Net.WebClient
             $webClient.Encoding = [System.Text.Encoding]::UTF8
             $content = $webClient.DownloadString($url)
 
+            if ([string]::IsNullOrWhiteSpace($content)) {
+                throw "Downloaded content is empty"
+            }
+
             [System.IO.File]::WriteAllText($localPath, $content, (New-Object System.Text.UTF8Encoding $false))
 
-            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Download successful" -ForegroundColor Green
-            return $localPath
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Downloaded: $ScriptName" -ForegroundColor Green
+            return $true
         } catch {
-            if ($attempt -ge $maxRetries) {
-                throw "Failed to download $ScriptName after $maxRetries attempts: $_"
+            if ($attempt -ge $MaxRetries) {
+                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Failed to download $ScriptName after $MaxRetries attempts: $_" -ForegroundColor Red
+                return $false
             }
             Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Download failed, retrying..." -ForegroundColor Yellow
             Start-Sleep -Seconds 5
         }
-    } while ($attempt -lt $maxRetries)
+    } while ($attempt -lt $MaxRetries)
+
+    return $false
+}
+
+function Get-DeploymentScript {
+    <#
+    .SYNOPSIS
+        Gets a deployment script path, checking multiple locations.
+
+    .DESCRIPTION
+        Priority order:
+        1. Download directory (C:\DenkoICT\Download) - for pre-downloaded scripts
+        2. Script directory (where ps_Deploy-Device.ps1 is located)
+        3. Current directory
+        4. Download from GitHub as fallback
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ScriptName
+    )
+
+    # Priority 1: Check download directory FIRST (pre-downloaded scripts)
+    $downloadPath = Join-Path $script:DownloadDirectory $ScriptName
+    if (Test-Path $downloadPath) {
+        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using pre-downloaded script: $ScriptName" -ForegroundColor Cyan
+        return $downloadPath
+    }
+
+    # Priority 2: Check script directory - handle empty $PSCommandPath gracefully
+    if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+        $scriptDir = Split-Path -Parent $PSCommandPath
+
+        if (-not [string]::IsNullOrWhiteSpace($scriptDir)) {
+            $localScript = Join-Path $scriptDir $ScriptName
+
+            if (Test-Path $localScript) {
+                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using local script: $ScriptName" -ForegroundColor Cyan
+                return $localScript
+            }
+        }
+    }
+
+    # Priority 3: Check current directory
+    $currentDirScript = Join-Path (Get-Location) $ScriptName
+    if (Test-Path $currentDirScript) {
+        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using script from current directory: $ScriptName" -ForegroundColor Cyan
+        return $currentDirScript
+    }
+
+    # Priority 4: Download from GitHub as final fallback
+    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Script not found locally, downloading from GitHub..." -ForegroundColor Yellow
+
+    if (Get-ScriptFromGitHub -ScriptName $ScriptName) {
+        return $downloadPath
+    }
+
+    throw "Failed to locate or download script: $ScriptName"
+}
+
+function Initialize-DeploymentScripts {
+    <#
+    .SYNOPSIS
+        Pre-downloads all required deployment scripts from GitHub.
+
+    .DESCRIPTION
+        Downloads all scripts upfront so deployment can run locally without
+        repeated network calls. This is critical for autounattend.xml scenarios.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$ScriptNames
+    )
+
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "  PRE-DOWNLOADING DEPLOYMENT SCRIPTS" -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host ""
+
+    $downloaded = 0
+    $skipped = 0
+    $failed = 0
+
+    foreach ($scriptName in $ScriptNames) {
+        # Check if already exists in download directory
+        $downloadPath = Join-Path $script:DownloadDirectory $scriptName
+
+        if (Test-Path $downloadPath) {
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Already exists: $scriptName" -ForegroundColor Gray
+            $skipped++
+            continue
+        }
+
+        # Check if exists locally (script directory or current directory)
+        $foundLocally = $false
+
+        if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+            $scriptDir = Split-Path -Parent $PSCommandPath
+            if (-not [string]::IsNullOrWhiteSpace($scriptDir)) {
+                $localPath = Join-Path $scriptDir $scriptName
+                if (Test-Path $localPath) {
+                    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Copying from script directory: $scriptName" -ForegroundColor Cyan
+                    Copy-Item -Path $localPath -Destination $downloadPath -Force
+                    $downloaded++
+                    $foundLocally = $true
+                }
+            }
+        }
+
+        if (-not $foundLocally) {
+            $currentDirPath = Join-Path (Get-Location) $scriptName
+            if (Test-Path $currentDirPath) {
+                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Copying from current directory: $scriptName" -ForegroundColor Cyan
+                Copy-Item -Path $currentDirPath -Destination $downloadPath -Force
+                $downloaded++
+                $foundLocally = $true
+            }
+        }
+
+        # Download from GitHub if not found locally
+        if (-not $foundLocally) {
+            if (Download-ScriptFromGitHub -ScriptName $scriptName) {
+                $downloaded++
+            } else {
+                $failed++
+                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] WARNING: Failed to download $scriptName" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    Write-Host ""
+    Write-Host "Download Summary:" -ForegroundColor Cyan
+    Write-Host "  Downloaded/Copied: $downloaded" -ForegroundColor Green
+    Write-Host "  Already existed: $skipped" -ForegroundColor Gray
+    if ($failed -gt 0) {
+        Write-Host "  Failed: $failed" -ForegroundColor Red
+    }
+    Write-Host ""
+
+    return ($failed -eq 0)
 }
 
 function Import-CustomFunctions {
@@ -189,26 +329,71 @@ function Import-CustomFunctions {
     [CmdletBinding()]
     param()
 
-    $customFunctionsUrl = "$ScriptBaseUrl/ps_Custom-Functions.ps1"
     $targetPath = Join-Path $script:DownloadDirectory "ps_Custom-Functions.ps1"
 
-    # Check for local version first
-    $scriptDir = Split-Path -Parent $PSCommandPath
-    $localFunctions = Join-Path $scriptDir "ps_Custom-Functions.ps1"
-
+    # Check for local version first - handle empty $PSCommandPath gracefully
     $sourceFile = $null
+    $localFunctions = $null
 
-    if (Test-Path $localFunctions) {
-        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using local custom functions" -ForegroundColor Cyan
-        $sourceFile = $localFunctions
-    } else {
+    # Try to determine script directory safely
+    if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+        $scriptDir = Split-Path -Parent $PSCommandPath
+
+        if (-not [string]::IsNullOrWhiteSpace($scriptDir)) {
+            $localFunctions = Join-Path $scriptDir "ps_Custom-Functions.ps1"
+
+            if (Test-Path $localFunctions) {
+                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using local custom functions from: $scriptDir" -ForegroundColor Cyan
+                $sourceFile = $localFunctions
+            }
+        }
+    }
+
+    # Fallback: Check current directory
+    if (-not $sourceFile) {
+        $currentDirFunctions = Join-Path (Get-Location) "ps_Custom-Functions.ps1"
+        if (Test-Path $currentDirFunctions) {
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using custom functions from current directory" -ForegroundColor Cyan
+            $sourceFile = $currentDirFunctions
+        }
+    }
+
+    # Fallback: Check download directory
+    if (-not $sourceFile -and (Test-Path $targetPath)) {
+        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using previously downloaded custom functions" -ForegroundColor Cyan
+        $sourceFile = $targetPath
+    }
+
+    # Final fallback: Download from GitHub
+    if (-not $sourceFile) {
         Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Downloading custom functions from GitHub..." -ForegroundColor Cyan
         $sourceFile = Get-DeploymentScript -ScriptName "ps_Custom-Functions.ps1"
     }
 
+    # Validate we have a valid file path
+    if ([string]::IsNullOrWhiteSpace($sourceFile)) {
+        throw "Failed to locate or download ps_Custom-Functions.ps1"
+    }
+
+    if (-not (Test-Path $sourceFile)) {
+        throw "Custom functions file not found at: $sourceFile"
+    }
+
     # Validate syntax
     $errors = $null
-    $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $sourceFile -Raw), [ref]$errors)
+    $content = $null
+
+    try {
+        $content = Get-Content $sourceFile -Raw -ErrorAction Stop
+    } catch {
+        throw "Failed to read custom functions file from '$sourceFile': $_"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($content)) {
+        throw "Custom functions file is empty: $sourceFile"
+    }
+
+    $null = [System.Management.Automation.PSParser]::Tokenize($content, [ref]$errors)
 
     if ($errors.Count -gt 0) {
         Write-Host "Syntax errors detected in custom functions:" -ForegroundColor Red
@@ -220,7 +405,7 @@ function Import-CustomFunctions {
 
     # Import into script scope (not function scope)
     $script:CustomFunctionsPath = $sourceFile
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Custom functions imported successfully" -ForegroundColor Green
+    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Custom functions imported successfully from: $sourceFile" -ForegroundColor Green
 }
 
 function Invoke-DeploymentStep {
@@ -462,9 +647,33 @@ try {
         Write-Log "Network connectivity confirmed" -Level Success
     }
 
+    # Pre-download all deployment scripts if network is available
+    if (Test-NetworkConnectivity) {
+        Write-Log "Pre-downloading deployment scripts..." -Level Info
+
+        $deploymentScripts = @(
+            'ps_Install-Winget.ps1'
+            'ps_Install-Drivers.ps1'
+            'ps_Install-Applications.ps1'
+            'ps_Set-Wallpaper.ps1'
+            'ps_Install-WindowsUpdates.ps1'
+        )
+
+        $downloadSuccess = Initialize-DeploymentScripts -ScriptNames $deploymentScripts
+
+        if ($downloadSuccess) {
+            Write-Log "All deployment scripts ready" -Level Success
+        } else {
+            Write-Log "Some scripts failed to download, will retry during execution" -Level Warning
+        }
+    } else {
+        Write-Log "Skipping script pre-download (no network)" -Level Warning
+        Write-Log "Will attempt to use local scripts or download individually" -Level Info
+    }
+
     # Run deployment
     Write-Log "" -Level Info
-    $deploymentResult = Start-Deployment
+    $null = Start-Deployment
 
     # Show deployment summary
     Write-Log "" -Level Info
