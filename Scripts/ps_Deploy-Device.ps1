@@ -300,7 +300,7 @@ function Initialize-DeploymentScripts {
 
         # Download from GitHub if not found locally
         if (-not $foundLocally) {
-            if (Download-ScriptFromGitHub -ScriptName $scriptName) {
+            if (Get-ScriptFromGitHub -ScriptName $scriptName) {
                 $downloaded++
             } else {
                 $failed++
@@ -431,33 +431,46 @@ function Invoke-DeploymentStep {
     Write-Log "Starting: $DisplayName" -Level Info
     Set-DeploymentStepStatus -StepName $DisplayName -Status 'Running'
 
-    try {
-        # Check network if required
-        if ($RequiresNetwork) {
-            $networkAvailable = if ($RequiresStableNetwork) {
-                Wait-ForNetworkStability -MaxRetries $NetworkRetryCount -DelaySeconds $NetworkRetryDelaySeconds -ContinuousCheck
-            } else {
-                Wait-ForNetworkStability -MaxRetries $NetworkRetryCount -DelaySeconds $NetworkRetryDelaySeconds
-            }
-
-            if (-not $networkAvailable) {
-                Write-Log "Network not available for $DisplayName, skipping..." -Level Warning
-                Set-DeploymentStepStatus -StepName $DisplayName -Status 'Skipped' -ErrorMessage 'Network not available'
-                return $false
-            }
+    # Check network if required
+    if ($RequiresNetwork) {
+        $networkAvailable = if ($RequiresStableNetwork) {
+            Wait-ForNetworkStability -MaxRetries $NetworkRetryCount -DelaySeconds $NetworkRetryDelaySeconds -ContinuousCheck
+        } else {
+            Wait-ForNetworkStability -MaxRetries $NetworkRetryCount -DelaySeconds $NetworkRetryDelaySeconds
         }
 
-        # Download script
+        if (-not $networkAvailable) {
+            Write-Log "Network not available for $DisplayName, skipping..." -Level Warning
+            Set-DeploymentStepStatus -StepName $DisplayName -Status 'Skipped' -ErrorMessage 'Network not available'
+            return $false
+        }
+    }
+
+    # Download script
+    try {
         $scriptPath = Get-DeploymentScript -ScriptName $ScriptName
+    } catch {
+        Write-Log "Failed to locate script $ScriptName : $_" -Level Error
+        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Failed' -ErrorMessage "Script not found: $_"
+        return $false
+    }
 
-        # Execute script
-        Write-Log "Executing $ScriptName..." -Level Info
+    # Execute script with proper error handling
+    Write-Log "Executing $ScriptName..." -Level Info
 
-        # Temporarily set ErrorAction to Continue to prevent Write-Error from child scripts becoming terminating
+    # Clear LASTEXITCODE before execution
+    $global:LASTEXITCODE = 0
+
+    # Execute in try-catch to handle terminating errors from child scripts
+    $scriptFailed = $false
+    $scriptError = $null
+
+    try {
+        # Set ErrorAction to Continue for non-terminating errors
         $previousErrorActionPreference = $ErrorActionPreference
-        try {
-            $ErrorActionPreference = 'Continue'
+        $ErrorActionPreference = 'Continue'
 
+        try {
             if ($ScriptParameters -and $ScriptParameters.Count -gt 0) {
                 & $scriptPath @ScriptParameters
             } else {
@@ -466,26 +479,48 @@ function Invoke-DeploymentStep {
         } finally {
             $ErrorActionPreference = $previousErrorActionPreference
         }
-
-        $exitCode = $LASTEXITCODE
-
-        if ($exitCode -and $exitCode -ne 0) {
-            Write-Log "Step completed with exit code: $exitCode" -Level Warning
-            Set-DeploymentStepStatus -StepName $DisplayName -Status 'Success' -ExitCode $exitCode
-        } else {
-            Write-Log "Completed: $DisplayName" -Level Success
-            Set-DeploymentStepStatus -StepName $DisplayName -Status 'Success'
-        }
-
-        return $true
-
     } catch {
-        $errorMessage = $_.Exception.Message
+        # Catch terminating errors from child scripts
+        $scriptFailed = $true
+        $scriptError = $_.Exception.Message
+
+        # Check if it's a common non-critical error
+        if ($scriptError -match "variable.*cannot be retrieved|has not been set") {
+            Write-Log "Script encountered non-critical error (continuing): $scriptError" -Level Warning
+            $scriptFailed = $false
+        } else {
+            Write-Log "Script threw terminating error: $scriptError" -Level Error
+        }
+    }
+
+    # Check exit code after execution
+    $exitCode = $global:LASTEXITCODE
+
+    # If script threw a critical terminating error, mark as failed
+    if ($scriptFailed) {
         Write-Log "Failed: $DisplayName" -Level Error
-        Write-Log "  Error: $errorMessage" -Level Error
-        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Failed' -ErrorMessage $errorMessage
+        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Failed' -ErrorMessage $scriptError
         return $false
     }
+
+    # Exit code 0 or null = success
+    if (-not $exitCode -or $exitCode -eq 0) {
+        Write-Log "Completed: $DisplayName" -Level Success
+        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Success'
+        return $true
+    }
+
+    # Exit code 3010 = success but reboot required
+    if ($exitCode -eq 3010) {
+        Write-Log "Completed: $DisplayName (reboot required)" -Level Success
+        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Success' -ExitCode $exitCode
+        return $true
+    }
+
+    # Non-zero exit code = failure
+    Write-Log "Step completed with exit code: $exitCode" -Level Warning
+    Set-DeploymentStepStatus -StepName $DisplayName -Status 'Failed' -ExitCode $exitCode
+    return $false
 }
 
 # ============================================================================
