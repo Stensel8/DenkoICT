@@ -7,6 +7,7 @@
 .idea/
 .DS_Store
 Thumbs.db
+.claude/
 
 # Common build/IDE outputs
 bin/
