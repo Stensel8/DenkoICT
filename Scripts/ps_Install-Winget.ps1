@@ -647,9 +647,9 @@ function ExitWithDelay {
     )
 
     # Debug mode output
-    if ($Debug -and $Wait) {
+    if ($PSBoundParameters.ContainsKey('Debug') -and $PSBoundParameters['Debug'] -and $Wait) {
         Write-Warning 'Wait specified, waiting several seconds...'
-    } elseif ($Debug -and !$Wait) {
+    } elseif ($PSBoundParameters.ContainsKey('Debug') -and $PSBoundParameters['Debug'] -and !$Wait) {
         Write-Warning 'Wait not specified, exiting immediately...'
     }
 
@@ -1020,7 +1020,7 @@ function Install-NuGetIfRequired {
 
             Write-Debug "Installing NuGet PackageProvider..."
 
-            if ($Debug) {
+            if ($PSBoundParameters.ContainsKey('Debug') -and $PSBoundParameters['Debug']) {
                 try { Install-PackageProvider -Name "NuGet" -Force -ForceBootstrap -ErrorAction SilentlyContinue } catch { }
             } else {
                 try { Install-PackageProvider -Name "NuGet" -Force -ForceBootstrap -ErrorAction SilentlyContinue | Out-Null } catch {}
@@ -1246,7 +1246,7 @@ if ($ForceClose) {
         # Append parameters if their corresponding variables are $true and not already in the command
         if ($Force -and !($command -imatch '\s-Force\b')) { $command += " -Force" }
         if ($ForceClose -and !($command -imatch '\s-ForceClose\b')) { $command += " -ForceClose" }
-        if ($Debug -and !($command -imatch '\s-Debug\b')) { $command += " -Debug" }
+        if ($PSBoundParameters.ContainsKey('Debug') -and $PSBoundParameters['Debug'] -and !($command -imatch '\s-Debug\b')) { $command += " -Debug" }
 
         # Relaunch in conhost
         if ([Environment]::Is64BitOperatingSystem) {
@@ -1284,14 +1284,14 @@ try {
             Install-NuGetIfRequired
 
             Write-Output "Installing Microsoft.WinGet.Client module..."
-            if ($Debug) {
+            if ($PSBoundParameters.ContainsKey('Debug') -and $PSBoundParameters['Debug']) {
                 try { Install-Module -Name Microsoft.WinGet.Client -Force -AllowClobber -Repository PSGallery -ErrorAction SilentlyContinue } catch { }
             } else {
                 try { Install-Module -Name Microsoft.WinGet.Client -Force -AllowClobber -Repository PSGallery -ErrorAction SilentlyContinue *>&1 | Out-Null } catch { }
             }
 
             Write-Output "Installing winget (this takes a minute or two)..."
-            if ($Debug) {
+            if ($PSBoundParameters.ContainsKey('Debug') -and $PSBoundParameters['Debug']) {
                 try { Repair-WinGetPackageManager -AllUsers -Force -Latest } catch { }
             } else {
                 try { Repair-WinGetPackageManager -AllUsers -Force -Latest *>&1 | Out-Null } catch { }
@@ -1535,7 +1535,7 @@ try {
 
     # If it's not 0x80073D02 (resources in use), show error
     if ($_.Exception.Message -notmatch '0x80073D02') {
-        if ($Debug) {
+        if ($PSBoundParameters.ContainsKey('Debug') -and $PSBoundParameters['Debug']) {
             Write-Warning ("Line number : {0}" -f $_.InvocationInfo.ScriptLineNumber)
         }
         Write-Warning "Error: $($_.Exception.Message)"

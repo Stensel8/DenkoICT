@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 3.0.0
+.VERSION 4.0.0
 
 .AUTHOR Sten Tijhuis
 
@@ -15,6 +15,7 @@
 [Version 2.0.0] - Added registry functions and Intune integration
 [Version 2.1.0] - Added WinGet detection and module installation
 [Version 3.0.0] - Major update: Added network stability functions, WinGet/MSI exit code descriptions, graceful error handling, completion banners
+[Version 4.0.0] - Stability release: Consolidated network functions, refactored retry logic with do-while/until patterns, removed duplicates, simplified code
 #>
 
 #requires -Version 5.1
@@ -28,18 +29,8 @@
     DenkoICT deployment scripts. Includes logging, error handling, network
     validation, exit code interpretation, and system utilities.
 
-    Key Features:
-    - Advanced logging with color-coded output and transcript support
-    - Network connectivity testing and stability validation
-    - WinGet and MSI exit code interpretation
-    - Graceful error handling with retry logic
-    - Admin rights validation
-    - Registry manipulation helpers
-    - Intune deployment tracking
-    - Module installation helpers
-
 .NOTES
-    Version      : 3.0.0
+    Version      : 4.0.0
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     Requires     : PowerShell 5.1+
@@ -67,11 +58,15 @@ $Global:DenkoConfig = @{
     TranscriptActive = $false
 }
 
+# ============================================================================
+# LOGGING FUNCTIONS
+# ============================================================================
+
 function Write-Log {
     <#
     .SYNOPSIS
         Writes timestamped log messages with color support and proper PowerShell streams.
-    
+
     .DESCRIPTION
         Enhanced logging function that writes to console with colors, uses appropriate
         PowerShell streams for pipeline compatibility, and integrates with transcript logging.
@@ -81,57 +76,231 @@ function Write-Log {
         [Parameter(Mandatory, ValueFromPipeline)]
         [AllowEmptyString()]
         [string]$Message,
-        
+
         [ValidateSet('Info','Success','Warning','Error','Verbose','Debug')]
         [string]$Level = 'Info'
     )
-    
+
     process {
         # Handle empty strings for blank lines
         if ([string]::IsNullOrEmpty($Message)) {
             Write-Host ""
             return
         }
-        
+
         $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         $logEntry = "[$timestamp] [$Level] $Message"
-        
+
         # Color mapping
         $color = @{
             Success = 'Green'
-            Warning = 'Yellow'  
+            Warning = 'Yellow'
             Error   = 'Red'
             Info    = 'Cyan'
             Verbose = 'Gray'
             Debug   = 'Magenta'
         }[$Level]
-        
+
         # Write to console with color
         Write-Host $logEntry -ForegroundColor $color
-        
+
         # Write to appropriate PowerShell stream for pipeline compatibility
         switch ($Level) {
-            'Error' { 
-                Write-Error $Message -ErrorAction Continue 
+            'Error' {
+                Write-Error $Message -ErrorAction Continue
             }
-            'Warning' { 
-                Write-Warning $Message 
+            'Warning' {
+                Write-Warning $Message
             }
-            'Verbose' { 
-                Write-Verbose $Message 
+            'Verbose' {
+                Write-Verbose $Message
             }
-            'Debug' { 
-                Write-Debug $Message 
+            'Debug' {
+                Write-Debug $Message
             }
-            'Success' { 
+            'Success' {
                 Write-Information $Message -InformationAction Continue
             }
-            'Info' { 
+            'Info' {
                 Write-Information $Message -InformationAction Continue
             }
         }
     }
 }
+
+function Initialize-LogDirectory {
+    <#
+    .SYNOPSIS
+        Creates log directory if it doesn't exist.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Path = $Global:DenkoConfig.LogPath
+    )
+
+    if (-not (Test-Path $Path)) {
+        try {
+            $null = New-Item -Path $Path -ItemType Directory -Force -ErrorAction Stop
+            Write-Log "Created log directory: $Path" -Level Info
+        } catch {
+            Write-Warning "Failed to create log directory '$Path': $_"
+            throw
+        }
+    }
+}
+
+function Start-Logging {
+    <#
+    .SYNOPSIS
+        Starts transcript logging for the current script.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$LogPath = $Global:DenkoConfig.LogPath,
+        [string]$LogName = $Global:DenkoConfig.LogName
+    )
+
+    try {
+        Initialize-LogDirectory -Path $LogPath
+
+        $logFile = Join-Path -Path $LogPath -ChildPath $LogName
+
+        # Rotate log if too large (>10MB)
+        if (Test-Path $logFile) {
+            $size = (Get-Item $logFile).Length / 1MB
+            if ($size -gt 10) {
+                $backupName = $LogName -replace '\.log$', "-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+                $backupPath = Join-Path $LogPath $backupName
+                Move-Item -Path $logFile -Destination $backupPath -Force
+                Write-Log "Rotated log file (was $([math]::Round($size,2))MB)" -Level Info
+            }
+        }
+
+        Start-Transcript -Path $logFile -Append -ErrorAction Stop | Out-Null
+        $Global:DenkoConfig.TranscriptActive = $true
+        Write-Log "Started logging to: $logFile" -Level Info
+    } catch {
+        Write-Warning "Failed to start transcript: $_"
+        $Global:DenkoConfig.TranscriptActive = $false
+    }
+}
+
+function Stop-Logging {
+    <#
+    .SYNOPSIS
+        Stops transcript logging if active.
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ($Global:DenkoConfig.TranscriptActive) {
+        try {
+            Stop-Transcript | Out-Null
+            $Global:DenkoConfig.TranscriptActive = $false
+        } catch {
+            Write-Verbose "Transcript stop failed or was not active: $_"
+        }
+    }
+}
+
+function Initialize-Environment {
+    <#
+    .SYNOPSIS
+        Initializes the script environment with logging.
+    #>
+    [CmdletBinding()]
+    param()
+
+    try {
+        Initialize-LogDirectory -Path $Global:DenkoConfig.LogPath
+
+        if (-not $Global:DenkoConfig.TranscriptActive) {
+            Start-Logging
+        }
+
+        Write-Log "Environment initialized" -Level Verbose
+    } catch {
+        Write-Warning "Failed to initialize environment: $_"
+    }
+}
+
+function Stop-Environment {
+    <#
+    .SYNOPSIS
+        Cleans up the script environment and stops logging.
+    #>
+    [CmdletBinding()]
+    param()
+
+    try {
+        Write-Log "Stopping environment" -Level Verbose
+        Stop-Logging
+    } catch {
+        Write-Warning "Failed to stop environment: $_"
+    }
+}
+
+function Copy-ExternalLogs {
+    <#
+    .SYNOPSIS
+        Collects logs from autounattend.xml setup scripts.
+
+    .DESCRIPTION
+        Copies logs created during Windows setup (WinPE/Specialize/FirstLogon) to the central log directory.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$LogDirectory = $Global:DenkoConfig.LogPath
+    )
+
+    if (-not $LogDirectory -or -not (Test-Path $LogDirectory)) {
+        Write-Log "Log directory not available. Skipping external logs." -Level Warning
+        return
+    }
+
+    $logPaths = @(
+        'C:\Windows\Setup\Scripts\SetComputerName.log'
+        'C:\Windows\Setup\Scripts\RemovePackages.log'
+        'C:\Windows\Setup\Scripts\RemoveCapabilities.log'
+        'C:\Windows\Setup\Scripts\RemoveFeatures.log'
+        'C:\Windows\Setup\Scripts\Specialize.log'
+        (Join-Path $env:TEMP 'UserOnce.log')
+        'C:\Windows\Setup\Scripts\DefaultUser.log'
+        'C:\Windows\Setup\Scripts\FirstLogon.log'
+    )
+
+    $collected = 0
+    foreach ($path in ($logPaths | Sort-Object -Unique)) {
+        if (-not $path -or -not (Test-Path $path -PathType Leaf)) {
+            continue
+        }
+
+        try {
+            $item = Get-Item -Path $path -ErrorAction Stop
+            $destination = Join-Path $LogDirectory $item.Name
+
+            if (Test-Path $destination) {
+                $baseName = [System.IO.Path]::GetFileNameWithoutExtension($item.Name)
+                $extension = [System.IO.Path]::GetExtension($item.Name)
+                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+                $destination = Join-Path $LogDirectory ("{0}-{1}{2}" -f $baseName, $timestamp, $extension)
+            }
+
+            Copy-Item -Path $item.FullName -Destination $destination -Force
+            $collected++
+        } catch {
+            Write-Log "Failed to copy log '$path': $_" -Level Debug
+        }
+    }
+
+    if ($collected -gt 0) {
+        Write-Log "Copied $collected external log(s)" -Level Info
+    }
+}
+
+# ============================================================================
+# ADMIN & SYSTEM FUNCTIONS
+# ============================================================================
 
 function Test-AdminRights {
     <#
@@ -141,7 +310,7 @@ function Test-AdminRights {
     [CmdletBinding()]
     [OutputType([bool])]
     param()
-    
+
     try {
         $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
         $principal = [Security.Principal.WindowsPrincipal]$identity
@@ -159,125 +328,45 @@ function Assert-AdminRights {
     #>
     [CmdletBinding()]
     param()
-    
+
     if (-not (Test-AdminRights)) {
         throw "This script requires administrative privileges. Please run as Administrator."
     }
     Write-Log "Running with administrative privileges" -Level Verbose
 }
 
-function Initialize-LogDirectory {
+function Get-SystemInfo {
     <#
     .SYNOPSIS
-        Creates log directory if it doesn't exist.
+        Gets basic system information.
     #>
     [CmdletBinding()]
-    param(
-        [string]$Path = $Global:DenkoConfig.LogPath
-    )
-    
-    try {
-        if (-not (Test-Path $Path)) {
-            $null = New-Item -Path $Path -ItemType Directory -Force -ErrorAction Stop
-            Write-Log "Created log directory: $Path" -Level Info
-        }
-    } catch {
-        Write-Warning "Failed to create log directory '$Path': $_"
-        throw
-    }
-}
-
-function Start-Logging {
-    <#
-    .SYNOPSIS
-        Starts transcript logging for the current script.
-    #>
-    [CmdletBinding()]
-    param(
-        [string]$LogPath = $Global:DenkoConfig.LogPath,
-        [string]$LogName = $Global:DenkoConfig.LogName
-    )
-    
-    try {
-        Initialize-LogDirectory -Path $LogPath
-        
-        $logFile = Join-Path -Path $LogPath -ChildPath $LogName
-        
-        # Rotate log if too large (>10MB)
-        if (Test-Path $logFile) {
-            $size = (Get-Item $logFile).Length / 1MB
-            if ($size -gt 10) {
-                $backupName = $LogName -replace '\.log$', "-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
-                $backupPath = Join-Path $LogPath $backupName
-                Move-Item -Path $logFile -Destination $backupPath -Force
-                Write-Log "Rotated log file (was $([math]::Round($size,2))MB)" -Level Info
-            }
-        }
-        
-        Start-Transcript -Path $logFile -Append -ErrorAction Stop | Out-Null
-        $Global:DenkoConfig.TranscriptActive = $true
-        Write-Log "Started logging to: $logFile" -Level Info
-    } catch {
-        Write-Warning "Failed to start transcript: $_"
-        $Global:DenkoConfig.TranscriptActive = $false
-    }
-}
-
-function Stop-Logging {
-    <#
-    .SYNOPSIS
-        Stops transcript logging if active.
-    #>
-    [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
-    
-    if ($Global:DenkoConfig.TranscriptActive) {
-        try {
-            Stop-Transcript | Out-Null
-            $Global:DenkoConfig.TranscriptActive = $false
-        } catch {
-            # Transcript already stopped or never started
-            Write-Verbose "Transcript stop failed or was not active: $_"
+
+    try {
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+
+        return @{
+            ComputerName = $cs.Name
+            Domain = $cs.Domain
+            Manufacturer = $cs.Manufacturer
+            Model = $cs.Model
+            OS = $os.Caption
+            OSVersion = $os.Version
+            LastBoot = $os.LastBootUpTime
+            Architecture = $env:PROCESSOR_ARCHITECTURE
         }
+    } catch {
+        Write-Log "Failed to get system info: $_" -Level Warning
+        return @{}
     }
 }
 
-function Initialize-Environment {
-    <#
-    .SYNOPSIS
-        Initializes the script environment with logging.
-    #>
-    [CmdletBinding()]
-    param()
-    
-    try {
-        Initialize-LogDirectory -Path $Global:DenkoConfig.LogPath
-        
-        if (-not $Global:DenkoConfig.TranscriptActive) {
-            Start-Logging
-        }
-        
-        Write-Log "Environment initialized" -Level Verbose
-    } catch {
-        Write-Warning "Failed to initialize environment: $_"
-    }
-}
-
-function Stop-Environment {
-    <#
-    .SYNOPSIS
-        Cleans up the script environment and stops logging.
-    #>
-    [CmdletBinding()]
-    param()
-    
-    try {
-        Write-Log "Stopping environment" -Level Verbose
-        Stop-Logging
-    } catch {
-        Write-Warning "Failed to stop environment: $_"
-    }
-}
+# ============================================================================
+# REGISTRY FUNCTIONS
+# ============================================================================
 
 function Set-RegistryValue {
     <#
@@ -288,23 +377,23 @@ function Set-RegistryValue {
     param(
         [Parameter(Mandatory)]
         [string]$Path,
-        
+
         [Parameter(Mandatory)]
         [string]$Name,
-        
+
         [Parameter(Mandatory)]
         $Value,
-        
+
         [ValidateSet('String','DWord','Binary','ExpandString','MultiString','QWord')]
         [string]$Type = 'String'
     )
-    
+
     try {
         if (-not (Test-Path $Path)) {
             $null = New-Item -Path $Path -Force -ErrorAction Stop
             Write-Log "Created registry path: $Path" -Level Verbose
         }
-        
+
         Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction Stop
         Write-Log "Set registry value: $Path\$Name = $Value" -Level Success
     } catch {
@@ -322,12 +411,12 @@ function Set-IntuneSuccess {
     param(
         [Parameter(Mandatory)]
         [string]$AppName,
-        
+
         [string]$Version = '1.0.0'
     )
-    
+
     $intuneKey = 'HKLM:\SOFTWARE\DenkoICT\Intune'
-    
+
     try {
         Set-RegistryValue -Path $intuneKey -Name $AppName -Value $Version
         Write-Log "Recorded Intune success for $AppName ($Version)" -Level Success
@@ -336,193 +425,9 @@ function Set-IntuneSuccess {
     }
 }
 
-function Get-SystemInfo {
-    <#
-    .SYNOPSIS
-        Gets basic system information.
-    #>
-    [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
-    
-    try {
-        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
-        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
-        
-        return @{
-            ComputerName = $cs.Name
-            Domain = $cs.Domain
-            Manufacturer = $cs.Manufacturer
-            Model = $cs.Model
-            OS = $os.Caption
-            OSVersion = $os.Version
-            LastBoot = $os.LastBootUpTime
-            Architecture = $env:PROCESSOR_ARCHITECTURE
-        }
-    } catch {
-        Write-Log "Failed to get system info: $_" -Level Warning
-        return @{}
-    }
-}
-
-function Test-InternetConnection {
-    <#
-    .SYNOPSIS
-        Tests if internet connection is available.
-    #>
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param(
-        [string]$TestUrl = 'http://www.msftncsi.com/ncsi.txt',
-        [string]$ExpectedContent = 'Microsoft NCSI',
-        [int]$TimeoutSec = 5
-    )
-    
-    try {
-        $response = Invoke-WebRequest -Uri $TestUrl -UseBasicParsing -TimeoutSec $TimeoutSec -ErrorAction Stop
-        return $response.Content -eq $ExpectedContent
-    } catch {
-        Write-Log "Internet connectivity test failed: $_" -Level Debug
-        return $false
-    }
-}
-
-function Install-RequiredModule {
-    <#
-    .SYNOPSIS
-        Installs a PowerShell module if not present.
-    #>
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param(
-        [Parameter(Mandatory)]
-        [string]$ModuleName,
-        
-        [string]$MinimumVersion
-    )
-    
-    try {
-        $module = Get-Module -ListAvailable -Name $ModuleName | 
-                  Sort-Object Version -Descending | 
-                  Select-Object -First 1
-        
-        if (-not $module -or ($MinimumVersion -and $module.Version -lt $MinimumVersion)) {
-            Write-Log "Installing module $ModuleName..." -Level Info
-            
-            Install-Module -Name $ModuleName -Force -Scope CurrentUser -AllowClobber -ErrorAction Stop
-            Write-Log "Installed $ModuleName successfully" -Level Success
-            return $true
-        }
-
-        Write-Log "$ModuleName already installed (v$($module.Version))" -Level Verbose
-        return $true
-    } catch {
-        Write-Log "Failed to install $ModuleName : $_" -Level Error
-        return $false
-    }
-}
-
-function Invoke-WithRetry {
-    <#
-    .SYNOPSIS
-        Executes a script block with retry logic.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [scriptblock]$ScriptBlock,
-        
-        [int]$MaxAttempts = 3,
-        [int]$DelaySeconds = 2
-    )
-    
-    for ($i = 1; $i -le $MaxAttempts; $i++) {
-        try {
-            $result = & $ScriptBlock
-            Write-Log "Operation succeeded on attempt $i" -Level Verbose
-            return $result
-        } catch {
-            if ($i -eq $MaxAttempts) {
-                Write-Log "All $MaxAttempts attempts failed" -Level Error
-                throw
-            }
-            Write-Log "Attempt $i/$MaxAttempts failed: $($_.Exception.Message)" -Level Warning
-            Write-Log "Retrying in $DelaySeconds seconds..." -Level Info
-            Start-Sleep -Seconds $DelaySeconds
-        }
-    }
-}
-
-function Get-WinGetPath {
-    <#
-    .SYNOPSIS
-        Finds the WinGet executable path.
-    
-    .DESCRIPTION
-        Locates winget.exe by checking common installation paths.
-        Useful for SYSTEM context or troubleshooting.
-    #>
-    [CmdletBinding()]
-    [OutputType([string])]
-    param()
-    
-    # Try to find winget in PATH first
-    $wingetCmd = Get-Command winget.exe -ErrorAction SilentlyContinue
-    if ($wingetCmd) {
-        return $wingetCmd.Source
-    }
-    
-    # Search WindowsApps folder
-    $wingetPaths = @(
-        "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe",
-        "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe"
-    )
-    
-    foreach ($path in $wingetPaths) {
-        $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
-        if ($resolved) {
-            # If multiple, get the latest version
-            if ($resolved -is [array]) {
-                $resolved = $resolved | Sort-Object { 
-                    [version]($_.Path -replace '^.*_(\d+\.\d+\.\d+\.\d+)_.*', '$1') 
-                } -Descending | Select-Object -First 1
-            }
-            return $resolved.Path
-        }
-    }
-    
-    return $null
-}
-
-function Test-WinGetAvailable {
-    <#
-    .SYNOPSIS
-        Checks if WinGet is installed and functional.
-    #>
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param()
-
-    try {
-        $wingetPath = Get-WinGetPath
-        if (-not $wingetPath) {
-            Write-Log "WinGet executable not found" -Level Debug
-            return $false
-        }
-
-        $version = & $wingetPath --version 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Log "WinGet is available: $version" -Level Verbose
-            return $true
-        }
-
-        Write-Log "WinGet found but not functional (exit code: $LASTEXITCODE)" -Level Debug
-        return $false
-    } catch {
-        Write-Log "WinGet availability check failed: $_" -Level Debug
-        return $false
-    }
-}
+# ============================================================================
+# NETWORK FUNCTIONS
+# ============================================================================
 
 function Test-NetworkConnectivity {
     <#
@@ -556,11 +461,11 @@ function Test-NetworkConnectivity {
 function Wait-ForNetworkStability {
     <#
     .SYNOPSIS
-        Waits for stable network connectivity with retry logic.
+        Waits for stable network connectivity using robust retry pattern.
 
     .DESCRIPTION
-        Performs multiple network checks with delays between attempts.
-        Optionally performs continuous stability checks to ensure connection is reliable.
+        Uses do-until loop to wait for network connectivity with configurable retries.
+        Returns true if network becomes available, false if max retries exceeded.
     #>
     [CmdletBinding()]
     [OutputType([bool])]
@@ -572,38 +477,205 @@ function Wait-ForNetworkStability {
 
     Write-Log "Checking network connectivity..." -Level Info
 
-    for ($i = 1; $i -le $MaxRetries; $i++) {
+    $attempt = 0
+
+    do {
+        $attempt++
+
         if (Test-NetworkConnectivity) {
-            Write-Log "Network connectivity confirmed (attempt $i/$MaxRetries)" -Level Success
+            Write-Log "Network connectivity confirmed (attempt $attempt/$MaxRetries)" -Level Success
 
             if ($ContinuousCheck) {
                 Write-Log "Performing stability check..." -Level Verbose
-                $stable = $true
-                for ($j = 1; $j -le 3; $j++) {
+
+                $stableChecks = 0
+                do {
                     Start-Sleep -Seconds 2
-                    if (-not (Test-NetworkConnectivity)) {
-                        $stable = $false
+                    if (Test-NetworkConnectivity) {
+                        $stableChecks++
+                    } else {
+                        Write-Log "Network unstable, retrying..." -Level Warning
                         break
                     }
-                }
-                if ($stable) {
+                } until ($stableChecks -ge 3)
+
+                if ($stableChecks -ge 3) {
                     Write-Log "Network connection is stable" -Level Success
                     return $true
                 }
-                Write-Log "Network unstable, retrying..." -Level Warning
             } else {
                 return $true
             }
         }
 
-        if ($i -lt $MaxRetries) {
-            Write-Log "Network not available (attempt $i/$MaxRetries). Waiting $DelaySeconds seconds..." -Level Warning
+        if ($attempt -lt $MaxRetries) {
+            Write-Log "Network not available (attempt $attempt/$MaxRetries). Waiting $DelaySeconds seconds..." -Level Warning
             Start-Sleep -Seconds $DelaySeconds
         }
-    }
+
+    } until ($attempt -ge $MaxRetries)
 
     Write-Log "Network connectivity check failed after $MaxRetries attempts" -Level Error
     return $false
+}
+
+# ============================================================================
+# MODULE & PACKAGE FUNCTIONS
+# ============================================================================
+
+function Install-RequiredModule {
+    <#
+    .SYNOPSIS
+        Installs a PowerShell module if not present.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleName,
+
+        [string]$MinimumVersion
+    )
+
+    try {
+        $module = Get-Module -ListAvailable -Name $ModuleName |
+                  Sort-Object Version -Descending |
+                  Select-Object -First 1
+
+        if (-not $module -or ($MinimumVersion -and $module.Version -lt $MinimumVersion)) {
+            Write-Log "Installing module $ModuleName..." -Level Info
+
+            Install-Module -Name $ModuleName -Force -Scope CurrentUser -AllowClobber -ErrorAction Stop
+            Write-Log "Installed $ModuleName successfully" -Level Success
+            return $true
+        }
+
+        Write-Log "$ModuleName already installed (v$($module.Version))" -Level Verbose
+        return $true
+    } catch {
+        Write-Log "Failed to install $ModuleName : $_" -Level Error
+        return $false
+    }
+}
+
+function Invoke-WithRetry {
+    <#
+    .SYNOPSIS
+        Executes a script block with retry logic using do-while pattern.
+
+    .DESCRIPTION
+        Implements robust retry mechanism with exponential backoff option.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [scriptblock]$ScriptBlock,
+
+        [int]$MaxAttempts = 3,
+        [int]$DelaySeconds = 2,
+        [switch]$ExponentialBackoff
+    )
+
+    $attempt = 0
+
+    do {
+        $attempt++
+
+        try {
+            $result = & $ScriptBlock
+            Write-Log "Operation succeeded on attempt $attempt" -Level Verbose
+            return $result
+        } catch {
+            if ($attempt -ge $MaxAttempts) {
+                Write-Log "All $MaxAttempts attempts failed" -Level Error
+                throw
+            }
+
+            $delay = if ($ExponentialBackoff) {
+                $DelaySeconds * [Math]::Pow(2, $attempt - 1)
+            } else {
+                $DelaySeconds
+            }
+
+            Write-Log "Attempt $attempt/$MaxAttempts failed: $($_.Exception.Message)" -Level Warning
+            Write-Log "Retrying in $delay seconds..." -Level Info
+            Start-Sleep -Seconds $delay
+        }
+    } while ($attempt -lt $MaxAttempts)
+}
+
+# ============================================================================
+# WINGET FUNCTIONS
+# ============================================================================
+
+function Get-WinGetPath {
+    <#
+    .SYNOPSIS
+        Finds the WinGet executable path.
+
+    .DESCRIPTION
+        Locates winget.exe by checking common installation paths.
+        Useful for SYSTEM context or troubleshooting.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+
+    # Try to find winget in PATH first
+    $wingetCmd = Get-Command winget.exe -ErrorAction SilentlyContinue
+    if ($wingetCmd) {
+        return $wingetCmd.Source
+    }
+
+    # Search WindowsApps folder
+    $wingetPaths = @(
+        "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe",
+        "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe"
+    )
+
+    foreach ($path in $wingetPaths) {
+        $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
+        if ($resolved) {
+            if ($resolved -is [array]) {
+                $resolved = $resolved | Sort-Object {
+                    [version]($_.Path -replace '^.*_(\d+\.\d+\.\d+\.\d+)_.*', '$1')
+                } -Descending | Select-Object -First 1
+            }
+            return $resolved.Path
+        }
+    }
+
+    return $null
+}
+
+function Test-WinGetAvailable {
+    <#
+    .SYNOPSIS
+        Checks if WinGet is installed and functional.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    try {
+        $wingetPath = Get-WinGetPath
+        if (-not $wingetPath) {
+            Write-Log "WinGet executable not found" -Level Debug
+            return $false
+        }
+
+        $null = & $wingetPath --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "WinGet is available" -Level Verbose
+            return $true
+        }
+
+        Write-Log "WinGet found but not functional (exit code: $LASTEXITCODE)" -Level Debug
+        return $false
+    } catch {
+        Write-Log "WinGet availability check failed: $_" -Level Debug
+        return $false
+    }
 }
 
 function Get-WinGetExitCodeDescription {
@@ -713,6 +785,129 @@ function Get-MSIExitCodeDescription {
     }
 }
 
+# ============================================================================
+# DOWNLOAD & IMPORT FUNCTIONS
+# ============================================================================
+
+function Get-RemoteScript {
+    <#
+    .SYNOPSIS
+        Downloads a script from a URL with retry logic.
+
+    .DESCRIPTION
+        Robust download function using do-while pattern for retries.
+        Preserves UTF-8 encoding for PowerShell compatibility.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ScriptUrl,
+
+        [Parameter(Mandatory)]
+        [string]$SavePath,
+
+        [int]$MaxRetries = 3,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $directory = Split-Path $SavePath -Parent
+    if (-not (Test-Path $directory)) {
+        $null = New-Item -Path $directory -ItemType Directory -Force
+    }
+
+    $attempt = 0
+
+    do {
+        $attempt++
+
+        try {
+            Write-Log "Downloading from $ScriptUrl (attempt $attempt/$MaxRetries)" -Level Info
+
+            $webClient = New-Object System.Net.WebClient
+            $webClient.Encoding = [System.Text.Encoding]::UTF8
+            $content = $webClient.DownloadString($ScriptUrl)
+
+            [System.IO.File]::WriteAllText($SavePath, $content, (New-Object System.Text.UTF8Encoding $false))
+
+            Write-Log "Download successful" -Level Success
+            return $true
+        } catch {
+            if ($attempt -ge $MaxRetries) {
+                Write-Log "Download failed after $MaxRetries attempts: $_" -Level Error
+                return $false
+            }
+
+            Write-Log "Download attempt $attempt failed: $_" -Level Warning
+            Start-Sleep -Seconds 5
+        }
+    } while ($attempt -lt $MaxRetries)
+
+    return $false
+}
+
+function Import-FunctionsFromGitHub {
+    <#
+    .SYNOPSIS
+        Downloads and imports ps_Custom-Functions.ps1 from GitHub or uses local copy.
+
+    .DESCRIPTION
+        Attempts to use local copy first, falls back to GitHub download.
+        Validates syntax before importing.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$GitHubUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Custom-Functions.ps1",
+        [string]$LocalScriptDir = $PSScriptRoot,
+        [string]$DownloadDir = 'C:\DenkoICT\Download'
+    )
+
+    $localFunctions = Join-Path $LocalScriptDir "ps_Custom-Functions.ps1"
+    $downloadPath = Join-Path $DownloadDir "ps_Custom-Functions.ps1"
+
+    $sourceFile = $null
+
+    # Try local first
+    if (Test-Path $localFunctions) {
+        Write-Log "Using local custom functions: $localFunctions" -Level Info
+        $sourceFile = $localFunctions
+    } else {
+        # Download from GitHub
+        Write-Log "Downloading custom functions from GitHub..." -Level Info
+
+        if (-not (Test-Path $DownloadDir)) {
+            $null = New-Item -Path $DownloadDir -ItemType Directory -Force
+        }
+
+        if (Get-RemoteScript -ScriptUrl $GitHubUrl -SavePath $downloadPath) {
+            Write-Log "Downloaded custom functions successfully" -Level Success
+            $sourceFile = $downloadPath
+        } else {
+            throw "Failed to download custom functions from GitHub"
+        }
+    }
+
+    # Validate syntax
+    $errors = $null
+    $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $sourceFile -Raw), [ref]$errors)
+
+    if ($errors.Count -gt 0) {
+        Write-Log "Syntax errors in custom functions file:" -Level Error
+        foreach ($err in $errors) {
+            Write-Log "  Line $($err.Token.StartLine): $($err.Message)" -Level Error
+        }
+        throw "Custom functions file contains syntax errors"
+    }
+
+    # Import the file
+    . $sourceFile
+    Write-Log "Custom functions imported successfully" -Level Success
+}
+
+# ============================================================================
+# ERROR HANDLING & EXECUTION
+# ============================================================================
+
 function Invoke-SafeScriptBlock {
     <#
     .SYNOPSIS
@@ -772,6 +967,10 @@ function Invoke-SafeScriptBlock {
     }
 }
 
+# ============================================================================
+# DEPLOYMENT TRACKING FUNCTIONS
+# ============================================================================
+
 function Set-DeploymentStepStatus {
     <#
     .SYNOPSIS
@@ -809,16 +1008,25 @@ function Set-DeploymentStepStatus {
             $null = New-Item -Path $stepKey -Force -ErrorAction Stop
         }
 
-        # Store status information
         Set-ItemProperty -Path $stepKey -Name 'Status' -Value $Status -Type String -Force
         Set-ItemProperty -Path $stepKey -Name 'Timestamp' -Value (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') -Type String -Force
 
         if ($ExitCode) {
             Set-ItemProperty -Path $stepKey -Name 'ExitCode' -Value $ExitCode -Type DWord -Force
+        } else {
+            # Clear ExitCode if not provided (e.g., on success without exit code)
+            if ((Get-ItemProperty -Path $stepKey -ErrorAction SilentlyContinue).PSObject.Properties['ExitCode']) {
+                Remove-ItemProperty -Path $stepKey -Name 'ExitCode' -ErrorAction SilentlyContinue
+            }
         }
 
         if ($ErrorMessage) {
             Set-ItemProperty -Path $stepKey -Name 'ErrorMessage' -Value $ErrorMessage -Type String -Force
+        } else {
+            # Clear ErrorMessage if not provided (e.g., on success)
+            if ((Get-ItemProperty -Path $stepKey -ErrorAction SilentlyContinue).PSObject.Properties['ErrorMessage']) {
+                Remove-ItemProperty -Path $stepKey -Name 'ErrorMessage' -ErrorAction SilentlyContinue
+            }
         }
 
         if ($Version) {
@@ -964,33 +1172,33 @@ function Show-DeploymentSummary {
     }
 
     # Calculate statistics
-    $successCount = ($steps | Where-Object { $_.Status -eq 'Success' }).Count
-    $failedCount = ($steps | Where-Object { $_.Status -eq 'Failed' }).Count
-    $skippedCount = ($steps | Where-Object { $_.Status -eq 'Skipped' }).Count
+    $successCount = @($steps | Where-Object { $_.Status -eq 'Success' }).Count
+    $failedCount = @($steps | Where-Object { $_.Status -eq 'Failed' }).Count
+    $skippedCount = @($steps | Where-Object { $_.Status -eq 'Skipped' }).Count
     $totalSteps = $steps.Count
 
     # Display statistics
     Write-Log "  Total Steps: $totalSteps" -Level Info
-    Write-Log "  ✓ Successful: $successCount" -Level Success
+    Write-Log "  Successful: $successCount" -Level Success
     if ($failedCount -gt 0) {
-        Write-Log "  ✗ Failed: $failedCount" -Level Error
+        Write-Log "  Failed: $failedCount" -Level Error
     }
     if ($skippedCount -gt 0) {
-        Write-Log "  ⊘ Skipped: $skippedCount" -Level Warning
+        Write-Log "  Skipped: $skippedCount" -Level Warning
     }
     Write-Log "" -Level Info
 
     # Display detailed step information
     Write-Log "  DETAILED STEP RESULTS:" -Level Info
-    Write-Log "  " + ("-" * 76) -Level Info
+    Write-Log ("  " + ("-" * 76)) -Level Info
 
     foreach ($step in $steps) {
         $statusSymbol = switch ($step.Status) {
-            'Success' { '✓' }
-            'Failed'  { '✗' }
-            'Skipped' { '⊘' }
-            'Running' { '▶' }
-            default   { '?' }
+            'Success' { '[OK]' }
+            'Failed'  { '[FAIL]' }
+            'Skipped' { '[SKIP]' }
+            'Running' { '[RUN]' }
+            default   { '[?]' }
         }
 
         $statusLevel = switch ($step.Status) {
@@ -1005,45 +1213,43 @@ function Show-DeploymentSummary {
         Write-Log $stepLine -Level $statusLevel
 
         if ($step.Timestamp) {
-            Write-Log "      Time: $($step.Timestamp)" -Level Verbose
+            Write-Log "        Time: $($step.Timestamp)" -Level Verbose
         }
 
         if ($step.Version) {
-            Write-Log "      Version: $($step.Version)" -Level Verbose
+            Write-Log "        Version: $($step.Version)" -Level Verbose
         }
 
         if ($null -ne $step.ExitCode -and $step.ExitCode -ne 0) {
-            Write-Log "      Exit Code: $($step.ExitCode)" -Level Warning
+            Write-Log "        Exit Code: $($step.ExitCode)" -Level Warning
         }
 
         if ($step.ErrorMessage) {
-            Write-Log "      Error: $($step.ErrorMessage)" -Level Error
+            Write-Log "        Error: $($step.ErrorMessage)" -Level Error
         }
     }
 
     Write-Log "" -Level Info
-    Write-Log "  " + ("-" * 76) -Level Info
+    Write-Log ("  " + ("-" * 76)) -Level Info
     Write-Log "" -Level Info
 
     # Overall status message
     if ($failedCount -eq 0 -and $skippedCount -eq 0) {
-        Write-Log "  🎉 ALL DEPLOYMENT STEPS COMPLETED SUCCESSFULLY!" -Level Success
+        Write-Log "  ALL DEPLOYMENT STEPS COMPLETED SUCCESSFULLY!" -Level Success
         Write-Log "  Your device is fully configured and ready to use." -Level Info
     } elseif ($failedCount -eq 0) {
-        Write-Log "  ✓ Deployment completed successfully with some steps skipped." -Level Success
+        Write-Log "  Deployment completed successfully with some steps skipped." -Level Success
         Write-Log "  Your device is ready to use." -Level Info
         if ($skippedCount -gt 0) {
             Write-Log "  Some optional features may be unavailable (check skipped items above)." -Level Warning
         }
     } else {
-        Write-Log "  ⚠ Deployment completed with $failedCount failure(s)." -Level Warning
+        Write-Log "  Deployment completed with $failedCount failure(s)." -Level Warning
         Write-Log "  Your device may not be fully configured." -Level Warning
         Write-Log "  Please review the failed steps above and check the log file." -Level Warning
     }
 
     Write-Log "" -Level Info
-
-    # Registry location
     Write-Log "  Deployment status stored in: HKLM:\SOFTWARE\DenkoICT\Deployment\Steps" -Level Verbose
     Write-Log "" -Level Info
     Write-Log $border -Level Info
@@ -1076,26 +1282,26 @@ function Show-CompletionBanner {
     Write-Log $border -Level Info
     Write-Log "" -Level Info
     Write-Log "  Total Steps: $totalSteps" -Level Info
-    Write-Log "  ✓ Successful: $SuccessCount" -Level Success
+    Write-Log "  Successful: $SuccessCount" -Level Success
 
     if ($FailedCount -gt 0) {
-        Write-Log "  ✗ Failed: $FailedCount" -Level Error
+        Write-Log "  Failed: $FailedCount" -Level Error
     }
 
     if ($SkippedCount -gt 0) {
-        Write-Log "  ⊘ Skipped: $SkippedCount" -Level Warning
+        Write-Log "  Skipped: $SkippedCount" -Level Warning
     }
 
     Write-Log "" -Level Info
 
     if ($FailedCount -eq 0 -and $SkippedCount -eq 0) {
-        Write-Log "  🎉 All deployment steps completed successfully!" -Level Success
+        Write-Log "  All deployment steps completed successfully!" -Level Success
         Write-Log "  Your device is ready to use." -Level Info
     } elseif ($FailedCount -eq 0) {
-        Write-Log "  ✓ Deployment completed with some steps skipped." -Level Success
+        Write-Log "  Deployment completed with some steps skipped." -Level Success
         Write-Log "  Your device is ready, but some optional features may be unavailable." -Level Warning
     } else {
-        Write-Log "  ⚠ Deployment completed with some failures." -Level Warning
+        Write-Log "  Deployment completed with some failures." -Level Warning
         Write-Log "  Please review the log file for details." -Level Warning
     }
 

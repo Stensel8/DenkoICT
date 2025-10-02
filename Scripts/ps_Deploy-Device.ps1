@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.3.0
+.VERSION 2.0.0
 
 .AUTHOR Sten Tijhuis
 
@@ -18,6 +18,7 @@
 [Version 1.2.0] - Enforces C:\DenkoICT\Logs for all logging, uses Bitstransfer for downloads, forces custom-functions download.
 [Version 1.2.2] - Enforces C:\DenkoICT\Download for all downloads.
 [Version 1.3.0] - Improved execution order, network stability checks with retries, better handling for network-dependent operations
+[Version 2.0.0] - Major refactor: Simplified orchestration, removed inline functions, better error handling, cleaner network retry logic
 #>
 
 #requires -Version 5.1
@@ -28,8 +29,31 @@
     Orchestrates Denko ICT device deployment by running child scripts in sequence.
 
 .DESCRIPTION
-    Always downloads custom functions. All logs and transcripts go to C:\DenkoICT\Logs. 
-    Checks network stability before network-dependent operations.
+    Downloads custom functions, validates network connectivity, and executes deployment scripts.
+    All logs go to C:\DenkoICT\Logs. All downloads go to C:\DenkoICT\Download.
+
+.PARAMETER ScriptBaseUrl
+    Base URL for downloading scripts from GitHub.
+
+.PARAMETER NetworkRetryCount
+    Number of retry attempts for network connectivity checks.
+
+.PARAMETER NetworkRetryDelaySeconds
+    Delay in seconds between network retry attempts.
+
+.EXAMPLE
+    .\ps_Deploy-Device.ps1
+    Runs full deployment with default settings.
+
+.EXAMPLE
+    .\ps_Deploy-Device.ps1 -NetworkRetryCount 10
+    Runs deployment with extended network retry attempts.
+
+.NOTES
+    Version      : 2.0.0
+    Created by   : Sten Tijhuis
+    Company      : Denko ICT
+    Requires     : PowerShell 5.1+, Admin rights
 #>
 
 [CmdletBinding()]
@@ -37,174 +61,268 @@ param (
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
     [string]$ScriptBaseUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts",
-    
+
     [Parameter(Mandatory = $false)]
     [int]$NetworkRetryCount = 5,
-    
+
     [Parameter(Mandatory = $false)]
     [int]$NetworkRetryDelaySeconds = 10
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Continue'  # Changed to Continue for better error resilience
+$ErrorActionPreference = 'Continue'
+
+# Script-scoped variables
 $script:LogDirectory = 'C:\DenkoICT\Logs'
 $script:DownloadDirectory = 'C:\DenkoICT\Download'
 $script:TranscriptPath = $null
 $script:TranscriptStarted = $false
 
+# ============================================================================
+# BASIC FUNCTIONS (Before Custom-Functions loaded)
+# ============================================================================
+
 function Initialize-Directories {
+    <#
+    .SYNOPSIS
+        Creates required directories for deployment.
+    #>
     if (-not (Test-Path $script:LogDirectory)) {
-        New-Item -Path $script:LogDirectory -ItemType Directory -Force | Out-Null
+        $null = New-Item -Path $script:LogDirectory -ItemType Directory -Force
     }
     if (-not (Test-Path $script:DownloadDirectory)) {
-        New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
+        $null = New-Item -Path $script:DownloadDirectory -ItemType Directory -Force
     }
 }
 
-function Initialize-Logging {
+function Start-DeploymentLogging {
+    <#
+    .SYNOPSIS
+        Starts transcript logging for deployment.
+    #>
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $script:TranscriptPath = Join-Path $script:LogDirectory "Deployment-$timestamp.log"
+
     try {
         Start-Transcript -Path $script:TranscriptPath -Force | Out-Null
         $script:TranscriptStarted = $true
+        Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [INFO] Started logging to: $script:TranscriptPath" -ForegroundColor Cyan
     } catch {
+        Write-Warning "Failed to start transcript: $_"
         $script:TranscriptPath = $null
     }
 }
 
-function Get-RemoteScript {
-    param(
-        [string]$ScriptUrl,
-        [string]$SavePath,
-        [int]$MaxRetries = 3
-    )
-
-    $directory = Split-Path $SavePath -Parent
-    if (-not (Test-Path $directory)) {
-        New-Item -Path $directory -ItemType Directory -Force | Out-Null
-    }
-
-    for ($i = 1; $i -le $MaxRetries; $i++) {
+function Stop-DeploymentLogging {
+    <#
+    .SYNOPSIS
+        Stops transcript logging.
+    #>
+    if ($script:TranscriptStarted) {
         try {
-            Import-Module BitsTransfer -ErrorAction SilentlyContinue
-            Start-BitsTransfer -Source $ScriptUrl -Destination $SavePath -ErrorAction Stop
-            return $true
+            Stop-Transcript | Out-Null
         } catch {
-            if ($i -lt $MaxRetries) {
-                try {
-                    Invoke-WebRequest -Uri $ScriptUrl -OutFile $SavePath -UseBasicParsing -ErrorAction Stop
-                    return $true
-                } catch {
-                    Start-Sleep -Seconds 5
-                }
-            }
+            # Silently ignore
         }
     }
-
-    return $false
 }
 
-function Get-Script {
-    param([string]$ScriptName)
+function Get-DeploymentScript {
+    <#
+    .SYNOPSIS
+        Gets a deployment script, preferring local version over GitHub download.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ScriptName
+    )
+
+    # Check for local version first
+    $scriptDir = Split-Path -Parent $PSCommandPath
+    $localScript = Join-Path $scriptDir $ScriptName
+
+    if (Test-Path $localScript) {
+        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using local script: $ScriptName" -ForegroundColor Cyan
+        return $localScript
+    }
+
+    # Download from GitHub if not found locally
+    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Local script not found, downloading from GitHub..." -ForegroundColor Yellow
+
     $url = "$ScriptBaseUrl/$ScriptName"
     $localPath = Join-Path $script:DownloadDirectory $ScriptName
 
-    if (Get-RemoteScript -ScriptUrl $url -SavePath $localPath) {
-        return $localPath
-    } else {
-        throw "Failed to download script: $ScriptName"
-    }
+    $attempt = 0
+    $maxRetries = 3
+
+    do {
+        $attempt++
+
+        try {
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Downloading $ScriptName (attempt $attempt/$maxRetries)..." -ForegroundColor Cyan
+
+            $webClient = New-Object System.Net.WebClient
+            $webClient.Encoding = [System.Text.Encoding]::UTF8
+            $content = $webClient.DownloadString($url)
+
+            [System.IO.File]::WriteAllText($localPath, $content, (New-Object System.Text.UTF8Encoding $false))
+
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Download successful" -ForegroundColor Green
+            return $localPath
+        } catch {
+            if ($attempt -ge $maxRetries) {
+                throw "Failed to download $ScriptName after $maxRetries attempts: $_"
+            }
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Download failed, retrying..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
+        }
+    } while ($attempt -lt $maxRetries)
 }
 
 function Import-CustomFunctions {
-    $customFunctionsUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Custom-Functions.ps1"
-    $target = Join-Path $script:DownloadDirectory "ps_Custom-Functions.ps1"
+    <#
+    .SYNOPSIS
+        Imports ps_Custom-Functions.ps1 from local or GitHub.
+    #>
+    [CmdletBinding()]
+    param()
 
-    if (Get-RemoteScript -ScriptUrl $customFunctionsUrl -SavePath $target) {
-        . $target
+    $customFunctionsUrl = "$ScriptBaseUrl/ps_Custom-Functions.ps1"
+    $targetPath = Join-Path $script:DownloadDirectory "ps_Custom-Functions.ps1"
+
+    # Check for local version first
+    $scriptDir = Split-Path -Parent $PSCommandPath
+    $localFunctions = Join-Path $scriptDir "ps_Custom-Functions.ps1"
+
+    $sourceFile = $null
+
+    if (Test-Path $localFunctions) {
+        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using local custom functions" -ForegroundColor Cyan
+        $sourceFile = $localFunctions
     } else {
-        throw "Failed to import custom functions"
+        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Downloading custom functions from GitHub..." -ForegroundColor Cyan
+        $sourceFile = Get-DeploymentScript -ScriptName "ps_Custom-Functions.ps1"
     }
-}
 
-function Set-WinGetSessionDefaults {
-    $wingetVariables = @{
-        Debug = $false
-        ForceClose = $false
-        Force = $false
-        AlternateInstallMethod = $false
-    }
-    foreach ($variable in $wingetVariables.Keys) {
-        if (-not (Get-Variable -Name $variable -Scope Global -ErrorAction SilentlyContinue)) {
-            New-Variable -Name $variable -Value $wingetVariables[$variable] -Scope Global | Out-Null
+    # Validate syntax
+    $errors = $null
+    $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $sourceFile -Raw), [ref]$errors)
+
+    if ($errors.Count -gt 0) {
+        Write-Host "Syntax errors detected in custom functions:" -ForegroundColor Red
+        foreach ($err in $errors) {
+            Write-Host "  Line $($err.Token.StartLine): $($err.Message)" -ForegroundColor Red
         }
+        throw "Custom functions file contains syntax errors"
     }
+
+    # Import into script scope (not function scope)
+    $script:CustomFunctionsPath = $sourceFile
+    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Custom functions imported successfully" -ForegroundColor Green
 }
 
 function Invoke-DeploymentStep {
+    <#
+    .SYNOPSIS
+        Executes a single deployment step with proper error handling and logging.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
     param(
+        [Parameter(Mandatory)]
         [string]$ScriptName,
+
+        [Parameter(Mandatory)]
         [string]$DisplayName,
+
         [hashtable]$ScriptParameters,
+
         [switch]$RequiresNetwork,
         [switch]$RequiresStableNetwork
     )
 
-    Write-Log "🔄 Starting: ${DisplayName}" -Level Info
-
-    # Record step as running
+    Write-Log "Starting: $DisplayName" -Level Info
     Set-DeploymentStepStatus -StepName $DisplayName -Status 'Running'
 
     try {
         # Check network if required
         if ($RequiresNetwork) {
-            if (-not (Wait-ForNetworkStability -MaxRetries $NetworkRetryCount -DelaySeconds $NetworkRetryDelaySeconds -ContinuousCheck:$RequiresStableNetwork)) {
-                Write-Log "Network not available for ${DisplayName}, skipping..." -Level Warning
+            $networkAvailable = if ($RequiresStableNetwork) {
+                Wait-ForNetworkStability -MaxRetries $NetworkRetryCount -DelaySeconds $NetworkRetryDelaySeconds -ContinuousCheck
+            } else {
+                Wait-ForNetworkStability -MaxRetries $NetworkRetryCount -DelaySeconds $NetworkRetryDelaySeconds
+            }
+
+            if (-not $networkAvailable) {
+                Write-Log "Network not available for $DisplayName, skipping..." -Level Warning
                 Set-DeploymentStepStatus -StepName $DisplayName -Status 'Skipped' -ErrorMessage 'Network not available'
                 return $false
             }
         }
 
-        $scriptPath = Get-Script -ScriptName $ScriptName
-        Set-Variable -Name 'LASTEXITCODE' -Scope Global -Value 0 -Force
+        # Download script
+        $scriptPath = Get-DeploymentScript -ScriptName $ScriptName
 
-        if ($ScriptParameters -and $ScriptParameters.Count -gt 0) {
-            & $scriptPath @ScriptParameters 2>&1 | Out-Null
-        } else {
-            & $scriptPath 2>&1 | Out-Null
+        # Execute script
+        Write-Log "Executing $ScriptName..." -Level Info
+
+        # Temporarily set ErrorAction to Continue to prevent Write-Error from child scripts becoming terminating
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+
+            if ($ScriptParameters -and $ScriptParameters.Count -gt 0) {
+                & $scriptPath @ScriptParameters
+            } else {
+                & $scriptPath
+            }
+        } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
         }
 
         $exitCode = $LASTEXITCODE
 
         if ($exitCode -and $exitCode -ne 0) {
             Write-Log "Step completed with exit code: $exitCode" -Level Warning
-            # Non-zero exit code is logged but not considered a hard failure
             Set-DeploymentStepStatus -StepName $DisplayName -Status 'Success' -ExitCode $exitCode
-            return $true
+        } else {
+            Write-Log "Completed: $DisplayName" -Level Success
+            Set-DeploymentStepStatus -StepName $DisplayName -Status 'Success'
         }
 
-        Write-Log "✓ Completed: ${DisplayName}" -Level Success
-        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Success'
         return $true
 
     } catch {
-        $errorMsg = $_.Exception.Message
-        Write-Log "✗ Failed: ${DisplayName}" -Level Error
-        Write-Log "  Error details: $errorMsg" -Level Error
-        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Failed' -ErrorMessage $errorMsg
+        $errorMessage = $_.Exception.Message
+        Write-Log "Failed: $DisplayName" -Level Error
+        Write-Log "  Error: $errorMessage" -Level Error
+        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Failed' -ErrorMessage $errorMessage
         return $false
     }
 }
 
-function Invoke-Deployment {
-    # Execution order optimized for network stability and dependencies
+# ============================================================================
+# MAIN DEPLOYMENT ORCHESTRATION
+# ============================================================================
+
+function Start-Deployment {
+    <#
+    .SYNOPSIS
+        Main deployment orchestration logic.
+    #>
+    [CmdletBinding()]
+    param()
+
+    # Deployment steps configuration
     $deploymentSteps = @(
         @{
             Script = 'ps_Install-Winget.ps1'
             Name = 'WinGet Installation'
             RequiresNetwork = $true
             RequiresStableNetwork = $false
-            Critical = $false  # Changed: Continue even if WinGet fails
+            Critical = $false
         },
         @{
             Script = 'ps_Install-Drivers.ps1'
@@ -237,8 +355,12 @@ function Invoke-Deployment {
         }
     )
 
-    $result = [pscustomobject]@{ Success = 0; Failed = 0; Skipped = 0 }
-    Set-WinGetSessionDefaults
+    $result = @{
+        Success = 0
+        Failed = 0
+        Skipped = 0
+    }
+
     $wingetSucceeded = $false
 
     Write-Log "═══════════════════════════════════════════════════════════" -Level Info
@@ -248,7 +370,7 @@ function Invoke-Deployment {
     foreach ($step in $deploymentSteps) {
         $parameters = if ($step.ContainsKey('Parameters')) { $step.Parameters } else { $null }
 
-        # Track WinGet installation success
+        # Track WinGet installation
         if ($step.Script -eq 'ps_Install-Winget.ps1') {
             $wingetSucceeded = Invoke-DeploymentStep `
                 -ScriptName $step.Script `
@@ -268,12 +390,13 @@ function Invoke-Deployment {
 
         # Skip steps that require WinGet if it's not available
         if ($step.ContainsKey('RequiresWinGet') -and $step.RequiresWinGet -and -not $wingetSucceeded) {
-            Write-Log "⊘ Skipping $($step.Name) - WinGet not available" -Level Warning
+            Write-Log "Skipping $($step.Name) - WinGet not available" -Level Warning
+            Set-DeploymentStepStatus -StepName $step.Name -Status 'Skipped' -ErrorMessage 'WinGet not available'
             $result.Skipped++
             continue
         }
 
-        # Execute step with graceful error handling
+        # Execute step
         $stepResult = Invoke-DeploymentStep `
             -ScriptName $step.Script `
             -DisplayName $step.Name `
@@ -285,99 +408,73 @@ function Invoke-Deployment {
             $result.Success++
         } else {
             $result.Failed++
-
-            # Never abort - always try to complete as much as possible
-            if ($step.Critical) {
-                Write-Log "Critical step failed, but continuing with remaining steps..." -Level Warning
-            } else {
-                Write-Log "Step failed, continuing to next step..." -Level Warning
-            }
+            Write-Log "Step failed, continuing to next step..." -Level Warning
         }
     }
 
     return $result
 }
 
-function Copy-ExternalLogs {
-    if (-not $script:LogDirectory) {
-        Write-Log "Log directory not defined. Skipping external logs." "WARN"
-        return
-    }
-    if (-not (Test-Path -Path $script:LogDirectory)) {
-        try { New-Item -Path $script:LogDirectory -ItemType Directory -Force | Out-Null }
-        catch { Write-Log "Failed to create log directory: $_" "WARN"; return }
-    }
-    $logPaths = @(
-        'C:\Windows\Setup\Scripts\SetComputerName.log'
-        'C:\Windows\Setup\Scripts\RemovePackages.log'
-        'C:\Windows\Setup\Scripts\RemoveCapabilities.log'
-        'C:\Windows\Setup\Scripts\RemoveFeatures.log'
-        'C:\Windows\Setup\Scripts\Specialize.log'
-        (Join-Path $env:TEMP 'UserOnce.log')
-        'C:\Windows\Setup\Scripts\DefaultUser.log'
-        'C:\Windows\Setup\Scripts\FirstLogon.log'
-    )
-    $collected = 0
-    foreach ($path in ($logPaths | Sort-Object -Unique)) {
-        if (-not $path -or -not (Test-Path -Path $path -PathType Leaf)) {
-            Write-Log "External log not found: '$path'" "VERBOSE"
-            continue
-        }
-        try {
-            $item = Get-Item -Path $path -ErrorAction Stop
-            $destination = Join-Path $script:LogDirectory $item.Name
-            if (Test-Path -Path $destination) {
-                $baseName = [System.IO.Path]::GetFileNameWithoutExtension($item.Name)
-                $extension = [System.IO.Path]::GetExtension($item.Name)
-                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-                $destination = Join-Path $script:LogDirectory ("{0}-{1}{2}" -f $baseName, $timestamp, $extension)
-            }
-            Copy-Item -Path $item.FullName -Destination $destination -Force
-            $collected++
-            Write-Log "Copied log '$($item.FullName)' to '$destination'" "VERBOSE"
-        } catch {
-            Write-Log "Failed to copy log '$($item.FullName)': $_" "WARN"
-        }
-    }
-    if ($collected -gt 0) {
-        Write-Log "Copied $collected external log(s) to $script:LogDirectory" "INFO"
-    } else {
-        Write-Log "No external logs found to copy." "VERBOSE"
-    }
-}
+# ============================================================================
+# SCRIPT ENTRY POINT
+# ============================================================================
 
 try {
-    # Pre-flight checks
+    # Pre-flight admin check
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]$identity
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw "This script requires administrative privileges. Please run as Administrator."
     }
 
+    # Initialize environment
     Initialize-Directories
-    Initialize-Logging
+    Start-DeploymentLogging
 
     # Import custom functions (critical - must succeed)
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "  DENKO ICT DEVICE DEPLOYMENT" -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host ""
+
     Import-CustomFunctions
 
+    # Dot-source at script scope
+    . $script:CustomFunctionsPath
+
+    # Verify functions loaded
+    if (-not (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
+        throw "Custom functions failed to load properly. Write-Log function not found."
+    }
+
     # Initial network check with extended retry
-    if (-not (Test-InternetConnection)) {
-        Write-Host "[WARNING] No network connectivity detected. Some steps may fail." -ForegroundColor Yellow
-        Write-Host "Waiting for network (up to 2 minutes)..." -ForegroundColor Cyan
-        $null = Wait-ForNetworkStability -MaxRetries 12 -DelaySeconds 10
+    Write-Log "Performing initial network check..." -Level Info
+    if (-not (Test-NetworkConnectivity)) {
+        Write-Log "No network connectivity detected" -Level Warning
+        Write-Log "Waiting for network (up to 2 minutes)..." -Level Info
+
+        $networkAvailable = Wait-ForNetworkStability -MaxRetries 12 -DelaySeconds 10
+
+        if (-not $networkAvailable) {
+            Write-Log "Network still unavailable - some steps will be skipped" -Level Warning
+        }
+    } else {
+        Write-Log "Network connectivity confirmed" -Level Success
     }
 
     # Run deployment
-    $null = Invoke-Deployment
+    Write-Log "" -Level Info
+    $deploymentResult = Start-Deployment
 
-    # Show detailed deployment summary from registry
+    # Show deployment summary
+    Write-Log "" -Level Info
     Show-DeploymentSummary -Title "DENKO ICT DEPLOYMENT COMPLETE"
 
     Write-Log "" -Level Info
     Write-Log "Log file location: $script:TranscriptPath" -Level Info
     Write-Log "" -Level Info
 
-    # Show instructions for checking deployment status later
+    # Show instructions
     Write-Log "═══════════════════════════════════════════════════════════" -Level Info
     Write-Log "  HOW TO CHECK DEPLOYMENT STATUS LATER:" -Level Info
     Write-Log "═══════════════════════════════════════════════════════════" -Level Info
@@ -392,10 +489,12 @@ try {
     Write-Log "═══════════════════════════════════════════════════════════" -Level Info
     Write-Log "" -Level Info
 
-    Write-Host "`nPress any key to exit..." -ForegroundColor Cyan
-    [void][System.Console]::ReadKey($true)
+    # Collect external logs
+    Copy-ExternalLogs -LogDirectory $script:LogDirectory
 
-    # Exit with success code even if some steps failed (graceful degradation)
+    Write-Host "`nPress any key to exit..." -ForegroundColor Cyan
+    $null = [System.Console]::ReadKey($true)
+
     exit 0
 
 } catch {
@@ -408,23 +507,10 @@ try {
     }
 
     Write-Host "`nPress any key to exit..." -ForegroundColor Cyan
-    [void][System.Console]::ReadKey($true)
+    $null = [System.Console]::ReadKey($true)
     exit 1
 
 } finally {
-    # Always try to collect external logs
-    try {
-        Copy-ExternalLogs
-    } catch {
-        Write-Host "[WARNING] Failed to collect external logs: $_" -ForegroundColor Yellow
-    }
-
-    # Always try to stop transcript
-    if ($script:TranscriptStarted) {
-        try {
-            Stop-Transcript | Out-Null
-        } catch {
-            # Silently ignore transcript stop errors
-        }
-    }
+    # Always stop logging
+    Stop-DeploymentLogging
 }
