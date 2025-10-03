@@ -113,17 +113,55 @@ try {
     # Refresh environment PATH to ensure WinGet is available
     Write-Log "Refreshing environment PATH..." -Level Info
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
-    
-    # Check WinGet availability
+
+    # Check WinGet availability with explicit path validation
     Write-Log "Checking WinGet availability..." -Level Info
+
+    # Try to find winget in PATH first
+    $wingetCmd = Get-Command winget.exe -ErrorAction SilentlyContinue
+
+    if (-not $wingetCmd) {
+        # Search common WinGet installation paths
+        Write-Log "WinGet not in PATH - searching common installation paths..." -Level Warning
+
+        $wingetPaths = @(
+            "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe",
+            "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe"
+        )
+
+        foreach ($path in $wingetPaths) {
+            $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
+            if ($resolved) {
+                if ($resolved -is [array]) {
+                    $resolved = $resolved | Sort-Object {
+                        [version]($_.Path -replace '^.*_(\d+\.\d+\.\d+\.\d+)_.*', '$1')
+                    } -Descending | Select-Object -First 1
+                }
+                $wingetCmd = Get-Command $resolved.Path -ErrorAction SilentlyContinue
+                if ($wingetCmd) {
+                    Write-Log "Found WinGet at: $($resolved.Path)" -Level Info
+                    break
+                }
+            }
+        }
+    }
+
+    if (-not $wingetCmd) {
+        Write-Log "WinGet executable not found - cannot proceed" -Level Error
+        Write-Log "Please ensure Windows App Installer (WinGet) is installed" -Level Error
+        exit 1
+    }
+
+    # Validate WinGet is functional
     try {
-        $wingetVersion = & winget --version 2>&1
+        $wingetVersion = & $wingetCmd.Source --version 2>&1
         if ($LASTEXITCODE -ne 0) {
-            throw "WinGet not available (exit: $LASTEXITCODE)"
+            throw "WinGet not functional (exit: $LASTEXITCODE)"
         }
         Write-Log "WinGet version: $wingetVersion" -Level Info
+        Write-Log "WinGet path: $($wingetCmd.Source)" -Level Verbose
     } catch {
-        Write-Log "WinGet not installed - cannot proceed: $_" -Level Error
+        Write-Log "WinGet not functional - cannot proceed: $_" -Level Error
         exit 1
     }
     
@@ -179,8 +217,8 @@ try {
             Write-Log "  Installation completed in $([math]::Round($duration, 1)) seconds" -Level Info
             
             # Extract meaningful output (skip progress bars)
-            $meaningfulOutput = ($output -split "`n") | 
-                Where-Object { $_ -match '\S' -and $_ -notmatch '^[\s█▆▇▊▋▌▍▎▏▐░▒▓■□▪▫▬%\d\-\\|/]+$' } | 
+            $meaningfulOutput = ($output -split "`n") |
+                Where-Object { $_ -match '\S' -and $_ -notmatch '^[\s\-\\|/%0-9]+$' } |
                 Select-Object -Last 3
             
             if ($meaningfulOutput) {

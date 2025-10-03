@@ -565,6 +565,7 @@ function Invoke-WithRetry {
 
     .DESCRIPTION
         Implements robust retry mechanism with exponential backoff option.
+        Validates network connectivity before network-dependent operations.
     #>
     [CmdletBinding()]
     param(
@@ -573,7 +574,8 @@ function Invoke-WithRetry {
 
         [int]$MaxAttempts = 3,
         [int]$DelaySeconds = 2,
-        [switch]$ExponentialBackoff
+        [switch]$ExponentialBackoff,
+        [switch]$RequiresNetwork
     )
 
     $attempt = 0
@@ -582,12 +584,25 @@ function Invoke-WithRetry {
         $attempt++
 
         try {
+            # Validate network if required
+            if ($RequiresNetwork -and $attempt -gt 1) {
+                Write-Log "Validating network connectivity before retry..." -Level Verbose
+                if (-not (Test-NetworkConnectivity)) {
+                    Write-Log "Network unavailable - waiting before retry..." -Level Warning
+                    Start-Sleep -Seconds 5
+                    if (-not (Test-NetworkConnectivity)) {
+                        throw "Network connectivity required but unavailable"
+                    }
+                }
+            }
+
             $result = & $ScriptBlock
             Write-Log "Operation succeeded on attempt $attempt" -Level Verbose
             return $result
         } catch {
             if ($attempt -ge $MaxAttempts) {
                 Write-Log "All $MaxAttempts attempts failed" -Level Error
+                Write-Log "Last error: $($_.Exception.Message)" -Level Error
                 throw
             }
 
@@ -792,11 +807,12 @@ function Get-MSIExitCodeDescription {
 function Get-RemoteScript {
     <#
     .SYNOPSIS
-        Downloads a script from a URL with retry logic.
+        Downloads a script from a URL with retry logic and optional hash verification.
 
     .DESCRIPTION
         Robust download function using do-while pattern for retries.
         Preserves UTF-8 encoding for PowerShell compatibility.
+        Supports SHA256 hash verification for security.
     #>
     [CmdletBinding()]
     [OutputType([bool])]
@@ -806,6 +822,8 @@ function Get-RemoteScript {
 
         [Parameter(Mandatory)]
         [string]$SavePath,
+
+        [string]$ExpectedHash,
 
         [int]$MaxRetries = 3,
         [int]$TimeoutSeconds = 30
@@ -828,7 +846,24 @@ function Get-RemoteScript {
             $webClient.Encoding = [System.Text.Encoding]::UTF8
             $content = $webClient.DownloadString($ScriptUrl)
 
+            # Write with UTF-8 no-BOM encoding
             [System.IO.File]::WriteAllText($SavePath, $content, (New-Object System.Text.UTF8Encoding $false))
+
+            # Verify hash if provided
+            if ($ExpectedHash) {
+                Write-Log "Verifying SHA256 hash..." -Level Info
+                $fileHash = (Get-FileHash -Path $SavePath -Algorithm SHA256).Hash
+
+                if ($fileHash -ne $ExpectedHash) {
+                    Write-Log "Hash verification failed!" -Level Error
+                    Write-Log "  Expected: $ExpectedHash" -Level Error
+                    Write-Log "  Actual:   $fileHash" -Level Error
+                    Remove-Item -Path $SavePath -Force -ErrorAction SilentlyContinue
+                    throw "Hash mismatch - file may be corrupted or tampered with"
+                }
+
+                Write-Log "Hash verification successful" -Level Success
+            }
 
             Write-Log "Download successful" -Level Success
             return $true

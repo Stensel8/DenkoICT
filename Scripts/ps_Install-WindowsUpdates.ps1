@@ -237,10 +237,12 @@ try {
     
     try {
         $result = Install-WindowsUpdate @installParams
-        
+
         if ($result) {
-            $installedCount = ($result | Where-Object { $_.Result -eq 'Installed' }).Count
-            $failedCount = ($result | Where-Object { $_.Result -eq 'Failed' }).Count
+            $installedResults = @($result | Where-Object { $_.Result -eq 'Installed' })
+            $failedResults = @($result | Where-Object { $_.Result -eq 'Failed' })
+            $installedCount = $installedResults.Count
+            $failedCount = $failedResults.Count
             
             Write-Log "Installation complete: $installedCount installed, $failedCount failed" -Level Success
             
