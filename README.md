@@ -6,6 +6,7 @@
 	</a>
 </p>
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/1af849a215b04dbda10ae4dee8790128)](https://app.codacy.com/gh/Stensel8/DenkoICT?utm_source=github.com&utm_medium=referral&utm_content=Stensel8/DenkoICT&utm_campaign=Badge_Grade)
 [![Codacy Security Scan](https://github.com/Stensel8/DenkoICT/actions/workflows/codacy.yml/badge.svg?branch=main)](https://github.com/Stensel8/DenkoICT/actions/workflows/codacy.yml)
 
 [![PSScriptAnalyzer](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml)
