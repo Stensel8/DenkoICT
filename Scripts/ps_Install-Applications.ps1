@@ -130,7 +130,13 @@ try {
     # Adjust applications for ARM64
     if ($isARM64) {
         $Applications = $Applications | ForEach-Object {
-            if ($_ -like "*x64*") { $_.Replace("x64", "arm64") } else { $_ }
+            # Use regex to replace .x64 suffix pattern (e.g., VCRedist.2015+.x64 -> VCRedist.2015+.arm64)
+            # This prevents unintended replacements in package names containing "x64"
+            if ($_ -match '\.x64(\.|$)') {
+                $_ -replace '\.x64(\.|$)', '.arm64$1'
+            } else {
+                $_
+            }
         }
         Write-Log "Adjusted applications for ARM64: $($Applications -join ', ')" -Level Info
     }

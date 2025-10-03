@@ -601,6 +601,11 @@ function Start-Deployment {
 
             if ($wingetSucceeded) {
                 $result.Success++
+
+                # Refresh PATH immediately to make WinGet available for subsequent scripts
+                Write-Log "Refreshing environment PATH to make WinGet available..." -Level Info
+                $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+                Write-Log "PATH refreshed successfully" -Level Success
             } else {
                 $result.Failed++
                 Write-Log "WinGet installation failed, but continuing deployment..." -Level Warning
