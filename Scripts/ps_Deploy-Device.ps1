@@ -35,12 +35,15 @@
 .PARAMETER ScriptBaseUrl
     Base URL for downloading scripts from GitHub.
 
+.PARAMETER SkipPS7Restart
+    Internal parameter to prevent infinite restart loops.
+
 .EXAMPLE
     .\ps_Deploy-Device.ps1
     Runs full deployment with default settings.
 
 .NOTES
-    Version      : 2.0.0
+    Version      : 2.1.0
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     Requires     : PowerShell 5.1+, Admin rights
@@ -50,7 +53,8 @@
 param (
     [string]$ScriptBaseUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts",
     [int]$NetworkRetryCount = 5,
-    [int]$NetworkRetryDelaySeconds = 10
+    [int]$NetworkRetryDelaySeconds = 10,
+    [switch]$SkipPS7Restart  # Internal parameter to prevent restart loops
 )
 
 Set-StrictMode -Version Latest
@@ -60,6 +64,41 @@ $ErrorActionPreference = 'Continue'
 $script:LogDirectory = 'C:\DenkoICT\Logs'
 $script:DownloadDirectory = 'C:\DenkoICT\Download'
 $script:TranscriptPath = $null
+
+# ============================================================================
+# NETWORK FUNCTIONS
+# ============================================================================
+
+function Test-NetworkConnection {
+    <#
+    .SYNOPSIS
+        Tests network connectivity with retry logic.
+    #>
+    param(
+        [string]$TestUrl = "https://github.com",
+        [int]$MaxRetries = $NetworkRetryCount,
+        [int]$RetryDelay = $NetworkRetryDelaySeconds
+    )
+    
+    for ($i = 1; $i -le $MaxRetries; $i++) {
+        try {
+            Write-Host "Testing network connectivity (attempt $i/$MaxRetries)..." -ForegroundColor Cyan
+            $response = Invoke-WebRequest -Uri $TestUrl -Method Head -UseBasicParsing -TimeoutSec 10
+            if ($response.StatusCode -eq 200) {
+                Write-Host "Network connection verified" -ForegroundColor Green
+                return $true
+            }
+        } catch {
+            if ($i -eq $MaxRetries) {
+                Write-Host "Network connection failed after $MaxRetries attempts" -ForegroundColor Red
+                return $false
+            }
+            Write-Host "Network test failed, retrying in $RetryDelay seconds..." -ForegroundColor Yellow
+            Start-Sleep -Seconds $RetryDelay
+        }
+    }
+    return $false
+}
 
 # ============================================================================
 # POWERSHELL 7 DETECTION AND INSTALLATION
@@ -112,6 +151,12 @@ function Install-PowerShell7 {
     Write-Host "  INSTALLING POWERSHELL 7" -ForegroundColor Cyan
     Write-Host "========================================`n" -ForegroundColor Cyan
     
+    # Ensure network connectivity
+    if (!(Test-NetworkConnection)) {
+        Write-Host "[PS7] Cannot install - no network connectivity" -ForegroundColor Red
+        return $false
+    }
+    
     # Method 1: Try WinGet first (if available)
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if ($winget) {
@@ -120,6 +165,8 @@ function Install-PowerShell7 {
             $result = Start-Process -FilePath "winget" -ArgumentList "install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements" -Wait -PassThru
             if ($result.ExitCode -eq 0) {
                 Write-Host "[PS7] Successfully installed via WinGet" -ForegroundColor Green
+                # Give Windows a moment to register the new installation
+                Start-Sleep -Seconds 3
                 return $true
             }
         } catch {
@@ -138,11 +185,26 @@ function Install-PowerShell7 {
             New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
         }
         
-        # Download MSI
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($msiUrl, $msiPath)
+        # Download MSI with retries
+        $downloaded = $false
+        for ($retry = 1; $retry -le 3; $retry++) {
+            try {
+                Write-Host "[PS7] Download attempt $retry/3..." -ForegroundColor Cyan
+                $webClient = New-Object System.Net.WebClient
+                $webClient.DownloadFile($msiUrl, $msiPath)
+                if ((Test-Path $msiPath) -and ((Get-Item $msiPath).Length -gt 1MB)) {
+                    $downloaded = $true
+                    break
+                }
+            } catch {
+                if ($retry -eq 3) {
+                    throw
+                }
+                Start-Sleep -Seconds 5
+            }
+        }
         
-        if (Test-Path $msiPath) {
+        if ($downloaded -and (Test-Path $msiPath)) {
             Write-Host "[PS7] Installing from MSI..." -ForegroundColor Cyan
             $msiArguments = "/i `"$msiPath`" /quiet ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ADD_FILE_CONTEXT_MENU_RUNPOWERSHELL=1 ENABLE_PSREMOTING=0 REGISTER_MANIFEST=1"
             $result = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArguments -Wait -PassThru
@@ -154,6 +216,8 @@ function Install-PowerShell7 {
                 $pwshPath = "$env:ProgramFiles\PowerShell\7"
                 $env:PATH = "$pwshPath;$env:PATH"
                 
+                # Give Windows a moment to register the new installation
+                Start-Sleep -Seconds 3
                 return $true
             } else {
                 Write-Host "[PS7] MSI installation failed with code: $($result.ExitCode)" -ForegroundColor Red
@@ -161,25 +225,6 @@ function Install-PowerShell7 {
         }
     } catch {
         Write-Host "[PS7] Failed to download/install MSI: $_" -ForegroundColor Red
-    }
-    
-    # Method 3: Install script from PowerShell Gallery
-    Write-Host "[PS7] Trying PowerShell Gallery install script..." -ForegroundColor Cyan
-    try {
-        # Download the script to a temporary file instead of using Invoke-Expression
-        $installScriptPath = Join-Path $env:TEMP "install-powershell.ps1"
-        Invoke-RestMethod 'https://aka.ms/install-powershell.ps1' -OutFile $installScriptPath
-        
-        # Execute the downloaded script file
-        & $installScriptPath -UseMSI -Quiet
-        
-        # Clean up the temporary script
-        Remove-Item -Path $installScriptPath -Force -ErrorAction SilentlyContinue
-        
-        Write-Host "[PS7] Installation script completed" -ForegroundColor Green
-        return $true
-    } catch {
-        Write-Host "[PS7] Gallery script failed: $_" -ForegroundColor Red
     }
     
     return $false
@@ -227,7 +272,8 @@ function Initialize-Directories {
 }
 
 function Start-DeploymentLogging {
-    $script:TranscriptPath = Join-Path $script:LogDirectory "ps_Deploy-Device.ps1.log"
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $script:TranscriptPath = Join-Path $script:LogDirectory "ps_Deploy-Device_$timestamp.log"
     
     try {
         Start-Transcript -Path $script:TranscriptPath -Force | Out-Null
@@ -320,6 +366,16 @@ function Invoke-DeploymentScript {
 # ============================================================================
 
 function Start-Deployment {
+    # Test network connectivity first
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  CHECKING NETWORK CONNECTIVITY" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    $hasNetwork = Test-NetworkConnection
+    if (!$hasNetwork) {
+        Write-Host "`n[WARNING] Limited or no network connectivity - some features may not work" -ForegroundColor Yellow
+    }
+    
     # Download all required scripts first
     Write-Host "`n========================================" -ForegroundColor Cyan
     Write-Host "  DOWNLOADING DEPLOYMENT SCRIPTS" -ForegroundColor Cyan
@@ -354,8 +410,12 @@ function Start-Deployment {
             }
         }
         
-        # Download from GitHub
-        Get-ScriptFromGitHub -ScriptName $script | Out-Null
+        # Download from GitHub if network is available
+        if ($hasNetwork) {
+            Get-ScriptFromGitHub -ScriptName $script | Out-Null
+        } else {
+            Write-Host "Cannot download $script - no network" -ForegroundColor Yellow
+        }
     }
     
     # Check if PowerShell 7 is available
@@ -403,6 +463,8 @@ function Start-Deployment {
     Write-Host "Failed: $($results.Failed)" -ForegroundColor $(if ($results.Failed -gt 0) { 'Red' } else { 'Gray' })
     Write-Host "Skipped: $($results.Skipped)" -ForegroundColor $(if ($results.Skipped -gt 0) { 'Yellow' } else { 'Gray' })
     Write-Host "Log: $script:TranscriptPath" -ForegroundColor Cyan
+    
+    return $results
 }
 
 # ============================================================================
@@ -418,42 +480,122 @@ try {
     Write-Host "  DENKO ICT DEVICE DEPLOYMENT" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host "PowerShell Version: $($PSVersionTable.PSVersion)" -ForegroundColor Cyan
+    Write-Host "Script Path: $PSCommandPath" -ForegroundColor Cyan
+    if ($SkipPS7Restart) {
+        Write-Host "PS7 Restart: Skipped (already restarted)" -ForegroundColor Gray
+    }
     
-    # PowerShell 7 check and installation
-    if ($PSVersionTable.PSVersion.Major -lt 7) {
+    # PowerShell 7 check and installation (only if not already restarted)
+    if ($PSVersionTable.PSVersion.Major -lt 7 -and !$SkipPS7Restart) {
         Write-Host "`nRunning in Windows PowerShell $($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)" -ForegroundColor Yellow
         
         if (!(Test-PowerShell7)) {
-            Write-Host "PowerShell 7 is required for optimal deployment" -ForegroundColor Yellow
+            Write-Host "PowerShell 7 is recommended for optimal deployment" -ForegroundColor Yellow
+            Write-Host "Attempting to install PowerShell 7..." -ForegroundColor Cyan
             
             $install = Install-PowerShell7
             if ($install -and (Test-PowerShell7)) {
                 Write-Host "`nPowerShell 7 installed successfully!" -ForegroundColor Green
                 
-                # Option to restart in PS7
+                # Restart in PS7
                 $pwshPath = Get-PowerShell7Path
-                if ($pwshPath) {
+                if ($pwshPath -and (Test-Path $pwshPath)) {
                     Write-Host "`nRestarting deployment in PowerShell 7..." -ForegroundColor Cyan
-                    Start-Process -FilePath $pwshPath -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"" -Verb RunAs
-                    exit 0
+                    Write-Host "This window will remain open until deployment completes." -ForegroundColor Cyan
+                    
+                    # Build arguments including our custom parameters
+                    $arguments = @(
+                        "-NoProfile",
+                        "-ExecutionPolicy", "Bypass",
+                        "-File", "`"$PSCommandPath`"",
+                        "-ScriptBaseUrl", "`"$ScriptBaseUrl`"",
+                        "-NetworkRetryCount", $NetworkRetryCount,
+                        "-NetworkRetryDelaySeconds", $NetworkRetryDelaySeconds,
+                        "-SkipPS7Restart"  # Prevent infinite restart loop
+                    )
+                    
+                    # Start PS7 process and WAIT for it to complete
+                    $ps7Process = Start-Process -FilePath $pwshPath -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+                    
+                    # Exit with the same code as the PS7 process
+                    exit $ps7Process.ExitCode
                 }
             } else {
                 Write-Host "`nContinuing with Windows PowerShell (some features may be limited)" -ForegroundColor Yellow
+                Write-Host "Note: Some deployment steps may have reduced functionality" -ForegroundColor Yellow
+            }
+        } else {
+            # PS7 exists but we're in PS5 - restart in PS7
+            $pwshPath = Get-PowerShell7Path
+            if ($pwshPath -and (Test-Path $pwshPath)) {
+                Write-Host "`nPowerShell 7 detected. Restarting deployment in PS7..." -ForegroundColor Cyan
+                Write-Host "This window will remain open until deployment completes." -ForegroundColor Cyan
+                
+                # Build arguments including our custom parameters
+                $arguments = @(
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-File", "`"$PSCommandPath`"",
+                    "-ScriptBaseUrl", "`"$ScriptBaseUrl`"",
+                    "-NetworkRetryCount", $NetworkRetryCount,
+                    "-NetworkRetryDelaySeconds", $NetworkRetryDelaySeconds,
+                    "-SkipPS7Restart"  # Prevent infinite restart loop
+                )
+                
+                # Start PS7 process and WAIT for it to complete
+                $ps7Process = Start-Process -FilePath $pwshPath -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+                
+                # Exit with the same code as the PS7 process
+                exit $ps7Process.ExitCode
             }
         }
     }
     
     # Run deployment
-    Start-Deployment
+    $deploymentResults = Start-Deployment
     
-    Write-Host "`nPress any key to exit..." -ForegroundColor Cyan
-    $null = [System.Console]::ReadKey($true)
-    exit 0
+    # Determine exit code based on results
+    $exitCode = 0
+    if ($deploymentResults.Failed -gt 0) {
+        $exitCode = 1
+    }
+    
+    # For unattended scenarios, don't wait for key press
+    $isUnattended = $env:USERNAME -eq 'defaultuser0' -or 
+                    $env:USERNAME -eq 'SYSTEM' -or 
+                    [Environment]::UserInteractive -eq $false
+    
+    if (!$isUnattended) {
+        Write-Host "`nPress any key to exit..." -ForegroundColor Cyan
+        $null = [System.Console]::ReadKey($true)
+    } else {
+        Write-Host "`nRunning in unattended mode - exiting automatically" -ForegroundColor Cyan
+        Start-Sleep -Seconds 5
+    }
+    
+    exit $exitCode
     
 } catch {
     Write-Host "`n[CRITICAL ERROR] $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "`nPress any key to exit..." -ForegroundColor Red
-    $null = [System.Console]::ReadKey($true)
+    Write-Host "Error details: $($_.ScriptStackTrace)" -ForegroundColor Red
+    
+    # Log the full error
+    if ($script:TranscriptPath) {
+        $_ | Out-String | Add-Content -Path $script:TranscriptPath
+    }
+    
+    # For unattended scenarios, don't wait for key press
+    $isUnattended = $env:USERNAME -eq 'defaultuser0' -or 
+                    $env:USERNAME -eq 'SYSTEM' -or 
+                    [Environment]::UserInteractive -eq $false
+    
+    if (!$isUnattended) {
+        Write-Host "`nPress any key to exit..." -ForegroundColor Red
+        $null = [System.Console]::ReadKey($true)
+    } else {
+        Start-Sleep -Seconds 10
+    }
+    
     exit 1
 } finally {
     Stop-DeploymentLogging

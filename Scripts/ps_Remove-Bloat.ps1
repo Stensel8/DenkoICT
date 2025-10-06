@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.3.0
+.VERSION 1.4.0
 
 .AUTHOR Sten Tijhuis
 
@@ -16,7 +16,7 @@
 [Version 1.1.1] - Added more known bloatware apps to the removal list.
 [Version 1.2.0] - Hardened Start Menu recommendation suppression using additional policy keys.
 [Version 1.3.0] - Adopted SupportsShouldProcess, centralized admin elevation, and improved WhatIf consistency.
-
+[Version 1.4.0] - Improved speed by caching installed and provisioned packages, reducing redundant PowerShell calls.
 #>
 
 <#
@@ -58,7 +58,7 @@
     Console output with removal summary and detailed log file in C:\DenkoICT\Logs\.
 
 .NOTES
-    Version      : 1.3.0
+    Version      : 1.4.0
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     
@@ -302,6 +302,82 @@ $AppsToRemove = @(
 
 # --- Functions ---
 
+# Cache for packages to avoid redundant queries
+$script:InstalledPackagesCache = $null
+$script:ProvisionedPackagesCache = $null
+
+function Get-CachedInstalledPackages {
+    if ($null -eq $script:InstalledPackagesCache) {
+        Write-Log "Caching all installed packages for faster pattern matching..."
+        $useWindowsPowerShell = $PSVersionTable.PSVersion.Major -ge 7
+        
+        if ($useWindowsPowerShell) {
+            try {
+                $scriptBlock = @"
+Get-AppxPackage -AllUsers | Select-Object Name, PackageFullName | ConvertTo-Json -Compress
+"@
+                $result = powershell.exe -NoProfile -Command $scriptBlock
+                if ($result -and $result -ne "null") {
+                    $script:InstalledPackagesCache = $result | ConvertFrom-Json
+                    if ($script:InstalledPackagesCache -isnot [array]) {
+                        $script:InstalledPackagesCache = @($script:InstalledPackagesCache)
+                    }
+                } else {
+                    $script:InstalledPackagesCache = @()
+                }
+            } catch {
+                Write-Log "Error caching installed packages: $($_.Exception.Message)" -Level 'Warning'
+                $script:InstalledPackagesCache = @()
+            }
+        } else {
+            try {
+                $script:InstalledPackagesCache = @(Get-AppxPackage -AllUsers -ErrorAction Stop | Select-Object Name, PackageFullName)
+            } catch {
+                Write-Log "Error caching installed packages: $($_.Exception.Message)" -Level 'Warning'
+                $script:InstalledPackagesCache = @()
+            }
+        }
+        Write-Log "Cached $($script:InstalledPackagesCache.Count) installed packages"
+    }
+    return $script:InstalledPackagesCache
+}
+
+function Get-CachedProvisionedPackages {
+    if ($null -eq $script:ProvisionedPackagesCache) {
+        Write-Log "Caching all provisioned packages for faster pattern matching..."
+        $useWindowsPowerShell = $PSVersionTable.PSVersion.Major -ge 7
+        
+        if ($useWindowsPowerShell) {
+            try {
+                $scriptBlock = @"
+Get-AppxProvisionedPackage -Online | Select-Object PackageName, DisplayName | ConvertTo-Json -Compress
+"@
+                $result = powershell.exe -NoProfile -Command $scriptBlock
+                if ($result -and $result -ne "null") {
+                    $script:ProvisionedPackagesCache = $result | ConvertFrom-Json
+                    if ($script:ProvisionedPackagesCache -isnot [array]) {
+                        $script:ProvisionedPackagesCache = @($script:ProvisionedPackagesCache)
+                    }
+                } else {
+                    $script:ProvisionedPackagesCache = @()
+                }
+            } catch {
+                Write-Log "Error caching provisioned packages: $($_.Exception.Message)" -Level 'Warning'
+                $script:ProvisionedPackagesCache = @()
+            }
+        } else {
+            try {
+                $script:ProvisionedPackagesCache = @(Get-AppxProvisionedPackage -Online -ErrorAction Stop | Select-Object PackageName, DisplayName)
+            } catch {
+                Write-Log "Error caching provisioned packages: $($_.Exception.Message)" -Level 'Warning'
+                $script:ProvisionedPackagesCache = @()
+            }
+        }
+        Write-Log "Cached $($script:ProvisionedPackagesCache.Count) provisioned packages"
+    }
+    return $script:ProvisionedPackagesCache
+}
+
 function Remove-AppxByPattern {
     param(
         [string]$Pattern,
@@ -311,47 +387,19 @@ function Remove-AppxByPattern {
 
     Write-Log "Searching installed packages matching: $Pattern"
     
-    # Use Windows PowerShell for Appx operations to avoid assembly conflicts in PS7
-    $useWindowsPowerShell = $PSVersionTable.PSVersion.Major -ge 7
-    
-    if ($useWindowsPowerShell) {
-        try {
-            # Build script block to run in Windows PowerShell
-            $scriptBlock = @"
-Get-AppxPackage -AllUsers | Where-Object { 
-    `$_.Name -like '$Pattern' -or `$_.PackageFullName -like '$Pattern' 
-} | Select-Object Name, PackageFullName | ConvertTo-Json -Compress
-"@
-            
-            $result = powershell.exe -NoProfile -Command $scriptBlock
-            if ($result) {
-                $matchedPackages = $result | ConvertFrom-Json
-                if ($matchedPackages -isnot [array]) {
-                    $matchedPackages = @($matchedPackages)
-                }
-            } else {
-                $matchedPackages = @()
-            }
-        } catch {
-            Write-Log "Error querying AppxPackages for pattern $Pattern : $($_.Exception.Message)" -Level 'Error'
-            return
-        }
-    } else {
-        # Running in Windows PowerShell, use cmdlets directly
-        try {
-            $matchedPackages = Get-AppxPackage -AllUsers -ErrorAction Stop | Where-Object { 
-                $_.Name -like $Pattern -or $_.PackageFullName -like $Pattern 
-            }
-        } catch {
-            Write-Log "Error querying AppxPackages for pattern $Pattern : $($_.Exception.Message)" -Level 'Error'
-            return
-        }
+    # Use cached packages instead of making individual queries
+    $cachedPackages = Get-CachedInstalledPackages
+    $matchedPackages = $cachedPackages | Where-Object { 
+        $_.Name -like $Pattern -or $_.PackageFullName -like $Pattern 
     }
 
     if (-not $matchedPackages) {
         Write-Log "No installed packages found for pattern: $Pattern"
         return
     }
+
+    # Use Windows PowerShell for Appx operations to avoid assembly conflicts in PS7
+    $useWindowsPowerShell = $PSVersionTable.PSVersion.Major -ge 7
 
     foreach ($pkg in $matchedPackages) {
         $packageName = $pkg.PackageFullName
@@ -391,47 +439,19 @@ function Remove-ProvisionedByPattern {
 
     Write-Log "Searching provisioned packages matching: $Pattern"
     
-    # Use Windows PowerShell for DISM operations to avoid assembly conflicts in PS7
-    $useWindowsPowerShell = $PSVersionTable.PSVersion.Major -ge 7
-    
-    if ($useWindowsPowerShell) {
-        try {
-            # Build script block to run in Windows PowerShell
-            $scriptBlock = @"
-Get-AppxProvisionedPackage -Online | Where-Object { 
-    `$_.PackageName -like '$Pattern' 
-} | Select-Object PackageName, DisplayName | ConvertTo-Json -Compress
-"@
-            
-            $result = powershell.exe -NoProfile -Command $scriptBlock
-            if ($result) {
-                $provPackages = $result | ConvertFrom-Json
-                if ($provPackages -isnot [array]) {
-                    $provPackages = @($provPackages)
-                }
-            } else {
-                $provPackages = @()
-            }
-        } catch {
-            Write-Log "Error querying provisioned packages for pattern $Pattern : $($_.Exception.Message)" -Level 'Error'
-            return
-        }
-    } else {
-        # Running in Windows PowerShell, use cmdlets directly
-        try {
-            $provPackages = Get-AppxProvisionedPackage -Online -ErrorAction Stop | Where-Object { 
-                $_.PackageName -like $Pattern 
-            }
-        } catch {
-            Write-Log "Error querying provisioned packages for pattern $Pattern : $($_.Exception.Message)" -Level 'Error'
-            return
-        }
+    # Use cached packages instead of making individual queries
+    $cachedPackages = Get-CachedProvisionedPackages
+    $provPackages = $cachedPackages | Where-Object { 
+        $_.PackageName -like $Pattern 
     }
 
     if (-not $provPackages) {
         Write-Log "No provisioned packages found for pattern: $Pattern"
         return
     }
+
+    # Use Windows PowerShell for DISM operations to avoid assembly conflicts in PS7
+    $useWindowsPowerShell = $PSVersionTable.PSVersion.Major -ge 7
 
     foreach ($p in $provPackages) {
         $packageName = $p.PackageName
@@ -470,6 +490,7 @@ try {
     }
 
     Write-Log "=== Bloatware Removal Started ===" -Level 'Info'
+    $startTime = Get-Date
     Write-Log "User: $env:USERNAME" -Level 'Info'
     Write-Log "Computer: $env:COMPUTERNAME" -Level 'Info'
     Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)" -Level 'Info'
@@ -485,7 +506,7 @@ try {
     $succeededRemovals = [System.Collections.ArrayList]::new()
     $failedRemovals = [System.Collections.ArrayList]::new()
 
-    # Iterate over the entries and apply both provisioned and installed removals
+    # Iterate over the entries and apply both provisioned and installed removals (optimized)
     foreach ($appName in $AppsToRemove) {
         $pattern = "*$appName*"
         
@@ -568,6 +589,9 @@ try {
     }
 
     Write-Log "=== Bloatware removal completed ===" -Level 'Info'
+    $endTime = Get-Date
+    $duration = $endTime - $startTime
+    Write-Log "Total execution time: $($duration.TotalSeconds.ToString('F1')) seconds" -Level 'Info'
     Write-Log "Bloatware removal script finished." -Level 'Success'
 } catch {
     Write-Log "Critical error during bloatware removal: $($_.Exception.Message)" -Level 'Error'
