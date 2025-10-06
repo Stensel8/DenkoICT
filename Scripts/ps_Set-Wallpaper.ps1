@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.1.0
+.VERSION 1.1.1
 
 .AUTHOR Sten Tijhuis
 
@@ -14,6 +14,7 @@
 [Version 1.0.0] - Initial Release. Sets Windows desktop wallpaper to img19.jpg (dark theme).
 [Version 1.0.1] - Improved logging. NOTE: some EDRs may block this script.
 [Version 1.1.0] - Added WhatIf support, centralized logging, and admin validation.
+[Version 1.1.1] - Improved error handling with Win32Exception.
 #>
 
 <#
@@ -46,7 +47,7 @@
     None. The script sets the wallpaper and exits.
 
 .NOTES
-    Version      : 1.1.0
+    Version      : 1.1.1
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     
@@ -103,15 +104,24 @@ try {
 
     # Define the Windows API code for setting wallpaper
     $wallpaperCode = @'
+using System;
 using System.Runtime.InteropServices;
+using System.ComponentModel;
 public class Wallpaper {
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
-    
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+
     // Constants for SystemParametersInfo
-    public const int SPI_SETDESKWALLPAPER = 20;
-    public const int SPIF_UPDATEINIFILE = 0x01;
-    public const int SPIF_SENDWININICHANGE = 0x02;
+    private const int SPI_SETDESKWALLPAPER = 20;
+    private const int SPIF_UPDATEINIFILE = 0x01;
+    private const int SPIF_SENDWININICHANGE = 0x02;
+
+    public static void SetWallpaper(string path) {
+        bool result = SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE);
+        if (!result) {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+    }
 }
 '@
 
@@ -122,14 +132,11 @@ public class Wallpaper {
     Write-Log -Message "Setting wallpaper to: $WallpaperPath" -Level Info
 
     if ($PSCmdlet.ShouldProcess($WallpaperPath, 'Set desktop wallpaper')) {
-        # Parameters: SPI_SETDESKWALLPAPER (20), 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE (3)
-        $result = [Wallpaper]::SystemParametersInfo(20, 0, $WallpaperPath, 3)
-
-        if ($result) {
+        try {
+            [Wallpaper]::SetWallpaper($WallpaperPath)
             Write-Log -Message ("Wallpaper successfully set to: {0}" -f $WallpaperPath) -Level Success
-        } else {
-            $lastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-            throw "Failed to set wallpaper. Win32 error code: $lastError"
+        } catch [System.ComponentModel.Win32Exception] {
+            throw "Failed to set wallpaper. Win32 error: $($_.Exception.Message) (Code: $($_.Exception.NativeErrorCode))"
         }
     } else {
         Write-Log -Message 'WhatIf: Skipping wallpaper update.' -Level Verbose
