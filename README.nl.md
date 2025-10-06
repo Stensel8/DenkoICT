@@ -17,6 +17,8 @@ Deze repository vormt een onderdeel van mijn stage bij Denko ICT. Ik kreeg de ta
 
 Ik heb deze GitHub-repository zelf opgezet als centrale plek om technische documentatie en scripts te kunnen opslaan.
 
+![Deployment Flow](Docs/Deployment_Flow.png)
+
 ![Expected Result](Docs/Expected_Result.png)
 
 ## Wat deze repository oplevert

@@ -17,6 +17,8 @@ This repository is a part of my internship at Denko ICT. I joined a team where m
 
 I set up this GitHub repository myself as a central place to store technical documentation and scripts.
 
+![Deployment Flow](Docs/Deployment_Flow.png)
+
 ![Expected Result](Docs/Expected_Result.png)
 
 ## What this repository delivers
