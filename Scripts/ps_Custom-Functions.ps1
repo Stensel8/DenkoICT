@@ -103,28 +103,6 @@ function Write-Log {
 
         # Write to console with color
         Write-Host $logEntry -ForegroundColor $color
-
-        # Write to appropriate PowerShell stream for pipeline compatibility
-        switch ($Level) {
-            'Error' {
-                Write-Error $Message -ErrorAction Continue
-            }
-            'Warning' {
-                Write-Warning $Message
-            }
-            'Verbose' {
-                Write-Verbose $Message
-            }
-            'Debug' {
-                Write-Debug $Message
-            }
-            'Success' {
-                Write-Information $Message -InformationAction Continue
-            }
-            'Info' {
-                Write-Information $Message -InformationAction Continue
-            }
-        }
     }
 }
 
@@ -169,7 +147,7 @@ function Start-Logging {
         if (Test-Path $logFile) {
             $size = (Get-Item $logFile).Length / 1MB
             if ($size -gt 10) {
-                $backupName = $LogName -replace '\.log$', "-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+                $backupName = $LogName -replace '\.log$', ".old.log"
                 $backupPath = Join-Path $LogPath $backupName
                 Move-Item -Path $logFile -Destination $backupPath -Force
                 Write-Log "Rotated log file (was $([math]::Round($size,2))MB)" -Level Info
@@ -280,10 +258,8 @@ function Copy-ExternalLogs {
             $destination = Join-Path $LogDirectory $item.Name
 
             if (Test-Path $destination) {
-                $baseName = [System.IO.Path]::GetFileNameWithoutExtension($item.Name)
-                $extension = [System.IO.Path]::GetExtension($item.Name)
-                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-                $destination = Join-Path $LogDirectory ("{0}-{1}{2}" -f $baseName, $timestamp, $extension)
+                # Overwrite existing log file
+                Remove-Item -Path $destination -Force -ErrorAction SilentlyContinue
             }
 
             Copy-Item -Path $item.FullName -Destination $destination -Force

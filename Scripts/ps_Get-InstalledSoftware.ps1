@@ -104,7 +104,8 @@ if (Test-Path $functionsPath) {
 }
 
 if ($useCustomFunctions -and -not $SkipLogging) {
-    Start-Logging -LogName 'Get-InstalledSoftware.log'
+    $Global:DenkoConfig.LogName = "$($MyInvocation.MyCommand.Name).log"
+    Start-Logging
 }
 
 try {

@@ -1,12 +1,12 @@
 <#PSScriptInfo
 
-.VERSION 1.1.1
+.VERSION 1.3.0
 
 .AUTHOR Sten Tijhuis
 
 .COMPANYNAME Denko ICT
 
-.TAGS PowerShell Windows Wallpaper Desktop Customization Deployment
+.TAGS PowerShell Windows Wallpaper Desktop Theme Customization Deployment
 
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
@@ -15,141 +15,179 @@
 [Version 1.0.1] - Improved logging. NOTE: some EDRs may block this script.
 [Version 1.1.0] - Added WhatIf support, centralized logging, and admin validation.
 [Version 1.1.1] - Improved error handling with Win32Exception.
+[Version 1.1.2] - Added method verification and improved robustness.
+[Version 1.2.0] - Simplified code, added explorer.exe restart.
+[Version 1.3.0] - Proper theme notification using broadcast messages, no explorer restart needed.
+
 #>
 
 <#
 .SYNOPSIS
-    Sets the Windows desktop wallpaper to the default dark theme image.
+    Sets Windows wallpaper and theme efficiently without opening Settings.
 
 .DESCRIPTION
-    This script sets the desktop wallpaper to the Windows 11 dark theme wallpaper (img19.jpg)
-    using Windows API calls through P/Invoke. The change is immediate and persistent across
-    user sessions.
+    Applies wallpaper and theme settings via direct registry manipulation and Windows API.
+    No Settings app will be opened during execution.
 
 .PARAMETER WallpaperPath
-    Optional. Path to the wallpaper image file. 
-    Default: "C:\Windows\Web\Wallpaper\Windows\img19.jpg"
+    Path to wallpaper image. Default: Windows 11 dark wallpaper.
+
+.PARAMETER Theme
+    Theme preset: 'Dark', 'Light', 'Mixed' (light apps/dark system), 'Inverted' (dark apps/light system)
+    Default: 'Dark'
+
+.PARAMETER AppsTheme
+    Apps theme override: 'light' or 'dark'
+
+.PARAMETER SystemTheme
+    System theme override: 'light' or 'dark'
 
 .EXAMPLE
-    .\ps_Set-Wallpaper.ps1
-    
-    Sets the wallpaper to the default Windows 11 dark theme image.
+    .\Set-Wallpaper.ps1
+    Sets default dark wallpaper and dark theme.
 
 .EXAMPLE
-    .\ps_Set-Wallpaper.ps1 -WallpaperPath "C:\Company\Wallpaper.jpg"
-    
-    Sets the wallpaper to a custom image path.
-
-.INPUTS
-    None. This script does not accept pipeline input.
-
-.OUTPUTS
-    None. The script sets the wallpaper and exits.
-
-.NOTES
-    Version      : 1.1.1
-    Created by   : Sten Tijhuis
-    Company      : Denko ICT
-    
-    This script requires administrative privileges to run successfully.
-    Uses Windows API SystemParametersInfo to ensure immediate wallpaper change.
-    
-    The script is typically used as part of device deployment to apply corporate branding.
-
-.LINK
-    Project Site: https://github.com/Stensel8/DenkoICT
+    .\Set-Wallpaper.ps1 -WallpaperPath "C:\Custom\bg.jpg" -Theme Light
+    Sets custom wallpaper with light theme.
 #>
 
 #requires -Version 5.1
 
-[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+[CmdletBinding(DefaultParameterSetName = 'Preset', SupportsShouldProcess)]
 param(
-    [Parameter(Mandatory = $false)]
-    [ValidateScript({
-        if (Test-Path -Path $_ -PathType Leaf) { $true }
-        else { throw "Wallpaper file not found: $_" }
-    })]
-    [string]$WallpaperPath = "C:\Windows\Web\Wallpaper\Windows\img19.jpg"
+    [Parameter()]
+    [ValidateScript({ Test-Path $_ -PathType Leaf })]
+    [string]$WallpaperPath = "C:\Windows\Web\Wallpaper\Windows\img19.jpg",
+
+    [Parameter(ParameterSetName = 'Preset')]
+    [ValidateSet('Dark', 'Light', 'Mixed', 'Inverted')]
+    [string]$Theme = 'Dark',
+
+    [Parameter(ParameterSetName = 'Custom')]
+    [ValidateSet('light', 'dark')]
+    [string]$AppsTheme,
+
+    [Parameter(ParameterSetName = 'Custom')]
+    [ValidateSet('light', 'dark')]
+    [string]$SystemTheme
 )
 
-# Set strict mode for better error handling
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$toolkitPath = Join-Path -Path $PSScriptRoot -ChildPath 'ps_Custom-Functions.ps1'
-
-if (Test-Path -Path $toolkitPath) {
-    try {
-        . $toolkitPath
-        Write-Verbose "Imported shared helper functions from $toolkitPath."
-    } catch {
-        throw "Failed to import helper toolkit from ${toolkitPath}: $_"
-    }
-} else {
-    throw "Required helper toolkit not found at $toolkitPath."
-}
-
-$requiredCommands = @('Assert-AdminRights','Initialize-Environment','Stop-Environment','Write-Log')
-foreach ($command in $requiredCommands) {
-    if (-not (Get-Command -Name $command -ErrorAction SilentlyContinue)) {
-        throw "Required toolkit command '$command' not found after importing ps_Custom-Functions.ps1."
-    }
-}
-
-Initialize-Environment
-$script:ExitCode = 0
-
-try {
-    Assert-AdminRights
-
-    # Define the Windows API code for setting wallpaper
-    $wallpaperCode = @'
+# Define Windows API
+Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 using System.ComponentModel;
-public class Wallpaper {
+
+public class WinAPI {
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern bool SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
-
-    // Constants for SystemParametersInfo
-    private const int SPI_SETDESKWALLPAPER = 20;
-    private const int SPIF_UPDATEINIFILE = 0x01;
-    private const int SPIF_SENDWININICHANGE = 0x02;
-
+    
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam, 
+        uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+    
+    [DllImport("user32.dll")]
+    private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    
     public static void SetWallpaper(string path) {
-        bool result = SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE);
-        if (!result) {
+        if (!SystemParametersInfo(20, 0, path, 0x01 | 0x02))
             throw new Win32Exception(Marshal.GetLastWin32Error());
-        }
+    }
+    
+    public static void BroadcastThemeChange() {
+        IntPtr HWND_BROADCAST = new IntPtr(0xFFFF);
+        IntPtr result;
+        
+        // Notify ImmersiveColorSet change
+        SendMessageTimeout(HWND_BROADCAST, 0x001A, IntPtr.Zero, "ImmersiveColorSet", 2, 5000, out result);
+        
+        // Send theme changed message
+        PostMessage(HWND_BROADCAST, 0x031A, IntPtr.Zero, IntPtr.Zero);
     }
 }
-'@
+'@ -ErrorAction SilentlyContinue
 
-    if (-not ('Wallpaper' -as [Type])) {
-        Add-Type -TypeDefinition $wallpaperCode -ErrorAction Stop | Out-Null
+function Set-Theme {
+    param(
+        [string]$Apps,
+        [string]$System
+    )
+    
+    $keyPath = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+    
+    # Ensure key exists
+    if (!(Test-Path $keyPath)) {
+        New-Item -Path $keyPath -Force | Out-Null
     }
+    
+    # Convert theme names to registry values (0=dark, 1=light)
+    $appsValue = if ($Apps -eq 'light') { 1 } else { 0 }
+    $systemValue = if ($System -eq 'light') { 1 } else { 0 }
+    
+    # Apply settings
+    Set-ItemProperty -Path $keyPath -Name 'AppsUseLightTheme' -Value $appsValue -Type DWord
+    Set-ItemProperty -Path $keyPath -Name 'SystemUsesLightTheme' -Value $systemValue -Type DWord
+    
+    # Notify system of changes
+    [WinAPI]::BroadcastThemeChange()
+    
+    # Small delay for changes to propagate
+    Start-Sleep -Milliseconds 500
+}
 
-    Write-Log -Message "Setting wallpaper to: $WallpaperPath" -Level Info
+function Close-SettingsIfOpen {
+    # Forcefully close any Settings app instances (just in case)
+    Get-Process SystemSettings -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+}
 
-    if ($PSCmdlet.ShouldProcess($WallpaperPath, 'Set desktop wallpaper')) {
-        try {
-            [Wallpaper]::SetWallpaper($WallpaperPath)
-            Write-Log -Message ("Wallpaper successfully set to: {0}" -f $WallpaperPath) -Level Success
-        } catch [System.ComponentModel.Win32Exception] {
-            throw "Failed to set wallpaper. Win32 error: $($_.Exception.Message) (Code: $($_.Exception.NativeErrorCode))"
+# Main execution
+try {
+    Write-Host "Applying configuration..." -ForegroundColor Cyan
+    
+    # Determine theme settings
+    if ($PSCmdlet.ParameterSetName -eq 'Preset') {
+        switch ($Theme) {
+            'Dark'     { $AppsTheme = 'dark';  $SystemTheme = 'dark' }
+            'Light'    { $AppsTheme = 'light'; $SystemTheme = 'light' }
+            'Mixed'    { $AppsTheme = 'light'; $SystemTheme = 'dark' }
+            'Inverted' { $AppsTheme = 'dark';  $SystemTheme = 'light' }
         }
-    } else {
-        Write-Log -Message 'WhatIf: Skipping wallpaper update.' -Level Verbose
-        Write-Log -Message ('WhatIf: Would set wallpaper to {0}' -f $WallpaperPath) -Level Warning
     }
-
+    
+    # Ensure Settings isn't running
+    Close-SettingsIfOpen
+    
+    # Set wallpaper
+    if ($PSCmdlet.ShouldProcess($WallpaperPath, 'Set wallpaper')) {
+        Write-Host "Setting wallpaper: $WallpaperPath"
+        [WinAPI]::SetWallpaper($WallpaperPath)
+    }
+    
+    # Apply theme if specified
+    if ($AppsTheme -or $SystemTheme) {
+        # Get current values if not specified
+        $keyPath = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+        if (!$AppsTheme) {
+            $current = (Get-ItemProperty $keyPath -Name AppsUseLightTheme -ErrorAction SilentlyContinue).AppsUseLightTheme
+            $AppsTheme = if ($current -eq 1) { 'light' } else { 'dark' }
+        }
+        if (!$SystemTheme) {
+            $current = (Get-ItemProperty $keyPath -Name SystemUsesLightTheme -ErrorAction SilentlyContinue).SystemUsesLightTheme
+            $SystemTheme = if ($current -eq 1) { 'light' } else { 'dark' }
+        }
+        
+        if ($PSCmdlet.ShouldProcess("Apps=$AppsTheme, System=$SystemTheme", 'Set theme')) {
+            Write-Host "Setting theme: Apps=$AppsTheme, System=$SystemTheme"
+            Set-Theme -Apps $AppsTheme -System $SystemTheme
+        }
+    }
+    
+    Write-Host "Configuration applied successfully" -ForegroundColor Green
+    
 } catch {
-    $script:ExitCode = 1
-    Write-Log -Message ("Failed to set wallpaper: {0}" -f $_) -Level Error
-} finally {
-    Stop-Environment
-}
-
-if ($script:ExitCode -ne 0) {
-    exit $script:ExitCode
+    Write-Error "Failed to apply configuration: $_"
+    exit 1
 }

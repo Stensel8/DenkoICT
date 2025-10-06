@@ -365,6 +365,8 @@ Deze repositories en makers vormden de basis voor grote delen van de automatiser
 - [https://github.com/REALSDEALS/pcHealth](https://github.com/REALSDEALS/pcHealth)
 - [https://github.com/REALSDEALS/pcHealthPlus-VS](https://github.com/REALSDEALS/pcHealthPlus-VS)
 - [https://github.com/REALSDEALS/pcHealthPlus](https://github.com/REALSDEALS/pcHealthPlus)
+- [https://github.com/Raphire/Win11Debloat/tree/master](https://github.com/Raphire/Win11Debloat/tree/master)
+
 
 ### Microsoft-ecosysteempartners
 - [https://learn.robopack.com/home](https://learn.robopack.com/home)
