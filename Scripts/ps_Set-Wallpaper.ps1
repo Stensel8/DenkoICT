@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 1.1.0
+.VERSION 1.1.1
 
 .AUTHOR Sten Tijhuis
 
@@ -14,6 +14,7 @@
 [Version 1.0.0] - Initial Release. Sets Windows desktop wallpaper to img19.jpg (dark theme).
 [Version 1.0.1] - Improved logging. NOTE: some EDRs may block this script.
 [Version 1.1.0] - Added WhatIf support, centralized logging, and admin validation.
+[Version 1.1.1] - Improved error handling with Win32Exception.
 #>
 
 <#
@@ -46,7 +47,7 @@
     None. The script sets the wallpaper and exits.
 
 .NOTES
-    Version      : 1.1.0
+    Version      : 1.1.1
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     
@@ -124,12 +125,16 @@ public class Wallpaper {
     if ($PSCmdlet.ShouldProcess($WallpaperPath, 'Set desktop wallpaper')) {
         # Parameters: SPI_SETDESKWALLPAPER (20), 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE (3)
         $result = [Wallpaper]::SystemParametersInfo(20, 0, $WallpaperPath, 3)
+        
+        # Capture error immediately after P/Invoke call to ensure reliability
+        $lastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
 
         if ($result) {
             Write-Log -Message ("Wallpaper successfully set to: {0}" -f $WallpaperPath) -Level Success
         } else {
-            $lastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-            throw "Failed to set wallpaper. Win32 error code: $lastError"
+            # Use Win32Exception for robust error reporting with descriptive message
+            $win32Exception = [System.ComponentModel.Win32Exception]::new($lastError)
+            throw "Failed to set wallpaper. Win32 error code: $lastError - $($win32Exception.Message)"
         }
     } else {
         Write-Log -Message 'WhatIf: Skipping wallpaper update.' -Level Verbose
