@@ -144,7 +144,7 @@ function Test-PowerShell7 {
 function Install-PowerShell7 {
     <#
     .SYNOPSIS
-        Installs PowerShell 7 using various methods.
+        Installs PowerShell 7 using WinGet package manager.
     #>
     
     Write-Host "`n========================================" -ForegroundColor Cyan
@@ -157,77 +157,99 @@ function Install-PowerShell7 {
         return $false
     }
     
-    # Method 1: Try WinGet first (if available)
-    $winget = Get-Command winget -ErrorAction SilentlyContinue
-    if ($winget) {
-        Write-Host "[PS7] Installing via WinGet..." -ForegroundColor Cyan
-        try {
-            $result = Start-Process -FilePath "winget" -ArgumentList "install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements" -Wait -PassThru
-            if ($result.ExitCode -eq 0) {
-                Write-Host "[PS7] Successfully installed via WinGet" -ForegroundColor Green
-                # Give Windows a moment to register the new installation
-                Start-Sleep -Seconds 3
-                return $true
-            }
-        } catch {
-            Write-Host "[PS7] WinGet installation failed: $_" -ForegroundColor Yellow
-        }
-    }
+    # Ensure WinGet is available first
+    Write-Host "[PS7] Checking WinGet availability..." -ForegroundColor Cyan
     
-    # Method 2: Direct MSI download
-    Write-Host "[PS7] Downloading PowerShell 7 MSI installer..." -ForegroundColor Cyan
-    $msiUrl = "https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7-win-x64.msi"
-    $msiPath = Join-Path $script:DownloadDirectory "PowerShell-7.msi"
+    # Refresh environment PATH to ensure WinGet is available
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
     
-    try {
-        # Ensure download directory exists
-        if (!(Test-Path $script:DownloadDirectory)) {
-            New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
-        }
+    # Find WinGet executable with robust path detection (same logic as applications script)
+    $wingetCmd = Get-Command winget.exe -ErrorAction SilentlyContinue
+    
+    if (-not $wingetCmd) {
+        Write-Host "[PS7] WinGet not in PATH - searching common installation paths..." -ForegroundColor Yellow
+        $wingetPaths = @(
+            "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe",
+            "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe"
+        )
         
-        # Download MSI with retries
-        $downloaded = $false
-        for ($retry = 1; $retry -le 3; $retry++) {
-            try {
-                Write-Host "[PS7] Download attempt $retry/3..." -ForegroundColor Cyan
-                $webClient = New-Object System.Net.WebClient
-                $webClient.DownloadFile($msiUrl, $msiPath)
-                if ((Test-Path $msiPath) -and ((Get-Item $msiPath).Length -gt 1MB)) {
-                    $downloaded = $true
+        foreach ($path in $wingetPaths) {
+            $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
+            if ($resolved) {
+                if ($resolved -is [array]) {
+                    $resolved = $resolved | Sort-Object {
+                        [version]($_.Path -replace '^.*_(\d+\.\d+\.\d+\.\d+)_.*', '$1')
+                    } -Descending | Select-Object -First 1
+                }
+                $wingetCmd = Get-Command $resolved.Path -ErrorAction SilentlyContinue
+                if ($wingetCmd) {
+                    Write-Host "[PS7] Found WinGet at: $($resolved.Path)" -ForegroundColor Green
                     break
                 }
-            } catch {
-                if ($retry -eq 3) {
-                    throw
-                }
-                Start-Sleep -Seconds 5
             }
         }
-        
-        if ($downloaded -and (Test-Path $msiPath)) {
-            Write-Host "[PS7] Installing from MSI..." -ForegroundColor Cyan
-            $msiArguments = "/i `"$msiPath`" /quiet ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ADD_FILE_CONTEXT_MENU_RUNPOWERSHELL=1 ENABLE_PSREMOTING=0 REGISTER_MANIFEST=1"
-            $result = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArguments -Wait -PassThru
-            
-            if ($result.ExitCode -eq 0) {
-                Write-Host "[PS7] Successfully installed from MSI" -ForegroundColor Green
-                
-                # Update PATH immediately
-                $pwshPath = "$env:ProgramFiles\PowerShell\7"
-                $env:PATH = "$pwshPath;$env:PATH"
-                
-                # Give Windows a moment to register the new installation
-                Start-Sleep -Seconds 3
-                return $true
-            } else {
-                Write-Host "[PS7] MSI installation failed with code: $($result.ExitCode)" -ForegroundColor Red
-            }
-        }
-    } catch {
-        Write-Host "[PS7] Failed to download/install MSI: $_" -ForegroundColor Red
     }
     
-    return $false
+    if (-not $wingetCmd) {
+        Write-Host "[PS7] Cannot install PowerShell 7 - WinGet is not available" -ForegroundColor Red
+        Write-Host "[PS7] Please ensure WinGet is installed or run ps_Install-Winget.ps1 first" -ForegroundColor Red
+        return $false
+    }
+    
+    # Validate WinGet is functional
+    try {
+        $wingetVersion = & $wingetCmd.Source --version 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "WinGet not functional (exit: $LASTEXITCODE)"
+        }
+        Write-Host "[PS7] WinGet version: $wingetVersion" -ForegroundColor Green
+    } catch {
+        Write-Host "[PS7] WinGet not functional: $_" -ForegroundColor Red
+        return $false
+    }
+    
+    # Install PowerShell 7 via WinGet
+    Write-Host "[PS7] Installing PowerShell 7 via WinGet..." -ForegroundColor Cyan
+    try {
+        # Build winget arguments
+        $wingetArgs = @(
+            "install"
+            "--id", "Microsoft.PowerShell"
+            "--silent"
+            "--accept-package-agreements"
+            "--accept-source-agreements"
+        )
+        
+        Write-Host "[PS7] Executing: winget $($wingetArgs -join ' ')" -ForegroundColor Cyan
+        $startTime = Get-Date
+        
+        # Execute winget and capture output
+        $output = & $wingetCmd.Source $wingetArgs 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+        
+        $duration = ((Get-Date) - $startTime).TotalSeconds
+        Write-Host "[PS7] Installation completed in $([math]::Round($duration, 1)) seconds" -ForegroundColor Cyan
+        
+        # Handle exit codes
+        if ($exitCode -eq 0) {
+            Write-Host "[PS7] Successfully installed via WinGet" -ForegroundColor Green
+            Start-Sleep -Seconds 3
+            return $true
+        } elseif ($exitCode -in @(-1978335189, -1978335135)) {
+            Write-Host "[PS7] Already installed (WinGet exit code: $exitCode)" -ForegroundColor Green
+            return $true
+        } elseif ($exitCode -in @(-1978334967, -1978334966)) {
+            Write-Host "[PS7] Installed but reboot required (exit code: $exitCode)" -ForegroundColor Yellow
+            return $true
+        } else {
+            Write-Host "[PS7] WinGet installation failed with exit code: $exitCode" -ForegroundColor Red
+            Write-Host "[PS7] Output: $($output.Trim())" -ForegroundColor Red
+            return $false
+        }
+    } catch {
+        Write-Host "[PS7] Installation failed: $_" -ForegroundColor Red
+        return $false
+    }
 }
 
 function Get-PowerShell7Path {

@@ -74,7 +74,6 @@
 [CmdletBinding()]
 param(
     [string[]]$Applications = @(
-        "Microsoft.PowerShell",
         "Microsoft.VCRedist.2015+.x64",
         "Microsoft.Office",
         "Microsoft.Teams",
