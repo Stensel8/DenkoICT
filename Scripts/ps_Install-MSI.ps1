@@ -104,7 +104,8 @@ if (-not (Test-Path $functionsPath)) {
 
 # Initialize logging
 if (-not $SkipLogging) {
-    Start-Logging -LogName 'Install-MSI.log'
+    $Global:DenkoConfig.LogName = "$($MyInvocation.MyCommand.Name).log"
+    Start-Logging
 }
 
 try {
