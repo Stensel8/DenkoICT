@@ -228,8 +228,7 @@ try {
                 if ($hpia) {
                 Write-Log "Running HP Image Assistant..." -Level Info
                 
-                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-                $workPath = Join-Path $env:TEMP "HPIA-$timestamp"
+                $workPath = Join-Path $env:TEMP "HPIA"
                 New-Item -ItemType Directory -Path $workPath -Force | Out-Null
                 
                 $hpiaArgs = @(

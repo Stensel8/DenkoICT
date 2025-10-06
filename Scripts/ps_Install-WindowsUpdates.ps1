@@ -1,313 +1,349 @@
 <#PSScriptInfo
 
-.VERSION 1.0.0
+.VERSION 2.0.0
 
 .AUTHOR Sten Tijhuis
 
 .COMPANYNAME Denko ICT
 
-.TAGS PowerShell Windows Updates WindowsUpdate PSWindowsUpdate Deployment
+.TAGS PowerShell Windows WindowsUpdate PSWindowsUpdate
 
 .PROJECTURI https://github.com/Stensel8/DenkoICT
 
 .RELEASENOTES
-[Version 1.0.0] - Initial Release. Installs Windows Updates using PSWindowsUpdate module.
+[Version 1.0.0] - Initial Release. Basic Windows Update installation.
+[Version 2.0.0] - Major refactor: PSWindowsUpdate module support, better error handling, PowerShell 7 compatibility
 #>
 
 #requires -Version 5.1
+#requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Downloads and installs Windows Updates on the system.
+    Installs Windows Updates using PSWindowsUpdate module.
 
 .DESCRIPTION
-    This script uses the PSWindowsUpdate module to check for, download, and install
-    available Windows Updates. It handles module installation, update detection,
-    and installation with proper logging and error handling.
-
-    Features:
-    - Automatic PSWindowsUpdate module installation
-    - Optional reboot control
-    - Category filtering (Security, Critical, etc.)
-    - Detailed logging of all operations
-    - Integration with Intune deployment tracking
+    Downloads and installs Windows Updates with proper error handling and compatibility for both PowerShell 5.1 and 7+.
+    Logs are saved to C:\DenkoICT\Logs.
 
 .PARAMETER Categories
-    Array of update categories to install. 
-    Default: @("Security", "Critical", "Updates")
-    Options: Security, Critical, Updates, Drivers, FeaturePacks, ServicePacks
+    Update categories to install. Default: Security, Critical, Updates
 
 .PARAMETER AutoReboot
-    Automatically reboot if required after installing updates.
+    Automatically reboot if required after updates.
 
-.PARAMETER ScheduleReboot
-    Schedule a reboot instead of immediate restart (requires -AutoReboot).
+.PARAMETER MaxUpdates
+    Maximum number of updates to install in one run. Default: 100
 
-.PARAMETER ScheduleTime
-    Time to schedule the reboot (format: "HH:mm"). Default: "03:00"
-
-.PARAMETER IgnoreReboot
-    Install updates even if a reboot is pending from previous updates.
-
-.PARAMETER SkipLogging
-    Skip transcript logging.
+.PARAMETER IgnorePendingReboot
+    Skip pending reboot check and proceed with updates anyway.
 
 .EXAMPLE
     .\ps_Install-WindowsUpdates.ps1
-    Installs Security, Critical, and regular Updates without auto-reboot.
+    Installs all security, critical and regular updates.
 
 .EXAMPLE
-    .\ps_Install-WindowsUpdates.ps1 -AutoReboot
-    Installs updates and automatically reboots if needed.
+    .\ps_Install-WindowsUpdates.ps1 -AutoReboot -MaxUpdates 10
+    Installs up to 10 updates with automatic reboot.
 
 .EXAMPLE
-    .\ps_Install-WindowsUpdates.ps1 -Categories @("Security", "Critical") -AutoReboot
-    Installs only Security and Critical updates with auto-reboot.
-
-.EXAMPLE
-    .\ps_Install-WindowsUpdates.ps1 -ScheduleReboot -ScheduleTime "02:00"
-    Installs updates and schedules reboot for 2:00 AM.
+    .\ps_Install-WindowsUpdates.ps1 -Categories Security,Critical -IgnorePendingReboot
+    Installs only security and critical updates, ignoring pending reboot status.
 
 .NOTES
-    Version      : 1.0.0
+    Version      : 2.0.0
     Created by   : Sten Tijhuis
     Company      : Denko ICT
-    Requires     : Admin rights, Internet connection
-    Module       : PSWindowsUpdate (auto-installed from PSGallery)
-
-.LINK
-    Project Site: https://github.com/Stensel8/DenkoICT
-    PSWindowsUpdate: https://www.powershellgallery.com/packages/PSWindowsUpdate
+    Requires     : PowerShell 5.1+, Admin rights
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $false)]
-    [ValidateSet("Security", "Critical", "Updates", "Drivers", "FeaturePacks", "ServicePacks")]
+    [ValidateSet("Security", "Critical", "Updates", "Drivers", "Optional")]
     [string[]]$Categories = @("Security", "Critical", "Updates"),
     
     [switch]$AutoReboot,
-    [switch]$ScheduleReboot,
     
-    [Parameter(Mandatory = $false)]
-    [ValidatePattern('^\d{2}:\d{2}$')]
-    [string]$ScheduleTime = "03:00",
+    [ValidateRange(1, 500)]
+    [int]$MaxUpdates = 100,
     
-    [switch]$IgnoreReboot,
-    [switch]$SkipLogging
+    [switch]$IgnorePendingReboot
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 
-# Load custom functions
-$functionsPath = Join-Path $PSScriptRoot 'ps_Custom-Functions.ps1'
-if (-not (Test-Path $functionsPath)) {
-    Write-Error "Required functions file not found: $functionsPath"
-    exit 1
-}
-. $functionsPath
+# Setup logging
+$LogDir = "C:\DenkoICT\Logs"
+$LogFile = Join-Path $LogDir "ps_Install-WindowsUpdates.ps1.log"
+$TranscriptFile = Join-Path $LogDir "ps_Install-WindowsUpdates.ps1.transcript"
 
-# Initialize
-if (-not $SkipLogging) {
-    $Global:DenkoConfig.LogName = "$($MyInvocation.MyCommand.Name).log"
-    Start-Logging
+if (!(Test-Path $LogDir)) {
+    New-Item -Path $LogDir -ItemType Directory -Force | Out-Null
 }
 
-try {
-    Assert-AdminRights
+Start-Transcript -Path $TranscriptFile -Force | Out-Null
+
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('Info', 'Success', 'Warning', 'Error')]
+        [string]$Level = 'Info'
+    )
     
-    Write-Log "=== Windows Update Installation Started ===" -Level Info
-    Write-Log "Categories: $($Categories -join ', ')" -Level Info
-    Write-Log "Auto Reboot: $AutoReboot" -Level Info
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $logEntry = "[$timestamp] [$Level] $Message"
     
-    # ============================================================================ #
-    # Install PSWindowsUpdate Module
-    # ============================================================================ #
+    # Append to log file
+    Add-Content -Path $LogFile -Value $logEntry -Force
     
+    # Console output with colors
+    $color = switch ($Level) {
+        'Success' { 'Green' }
+        'Warning' { 'Yellow' }
+        'Error'   { 'Red' }
+        default   { 'Cyan' }
+    }
+    
+    Write-Host $Message -ForegroundColor $color
+}
+
+# ============================================================================
+# Module Installation
+# ============================================================================
+
+function Install-PSWindowsUpdateModule {
     Write-Log "Checking for PSWindowsUpdate module..." -Level Info
     
     $module = Get-Module -ListAvailable -Name PSWindowsUpdate | 
               Sort-Object Version -Descending | 
               Select-Object -First 1
     
-    if (-not $module) {
-        Write-Log "PSWindowsUpdate module not found, installing..." -Level Info
-        
-        # Ensure NuGet provider is installed
-        $nuget = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-        if (-not $nuget) {
-            Write-Log "Installing NuGet package provider..." -Level Info
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers | Out-Null
+    if ($module -and $module.Version -ge [Version]"2.2.0") {
+        Write-Log "PSWindowsUpdate v$($module.Version) already installed" -Level Success
+        return $true
+    }
+    
+    Write-Log "Installing/updating PSWindowsUpdate module..." -Level Info
+    
+    try {
+        # Ensure NuGet provider
+        if (!(Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue)) {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+            Write-Log "NuGet provider installed" -Level Success
         }
         
-        # Trust PSGallery temporarily
-        $psGalleryTrust = (Get-PSRepository -Name PSGallery).InstallationPolicy
-        if ($psGalleryTrust -ne 'Trusted') {
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-        }
+        # Trust PSGallery
+        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
         
-        try {
-            Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber
-            Write-Log "PSWindowsUpdate module installed successfully" -Level Success
-        } catch {
-            Write-Log "Failed to install PSWindowsUpdate: $_" -Level Error
-            throw
-        } finally {
-            # Restore PSGallery trust setting
-            if ($psGalleryTrust -ne 'Trusted') {
-                Set-PSRepository -Name PSGallery -InstallationPolicy $psGalleryTrust
+        # Install module (CurrentUser for PS7, AllUsers for PS5.1)
+        $scope = if ($PSVersionTable.PSVersion.Major -ge 7) { 'CurrentUser' } else { 'AllUsers' }
+        Install-Module -Name PSWindowsUpdate -Force -Scope $scope -AllowClobber
+        
+        Write-Log "PSWindowsUpdate module installed successfully" -Level Success
+        return $true
+        
+    } catch {
+        Write-Log "Failed to install PSWindowsUpdate: $_" -Level Error
+        return $false
+    } finally {
+        # Restore PSGallery setting
+        Set-PSRepository -Name PSGallery -InstallationPolicy Untrusted -ErrorAction SilentlyContinue
+    }
+}
+
+# ============================================================================
+# Reboot Checking
+# ============================================================================
+
+function Test-PendingReboot {
+    $rebootRequired = $false
+    $reasons = @()
+    
+    # Check registry keys
+    $regPaths = @(
+        @{Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing"; Key = "RebootPending"; Reason = "Component Based Servicing"}
+        @{Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update"; Key = "RebootRequired"; Reason = "Windows Update"}
+        @{Path = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager"; Key = "PendingFileRenameOperations"; Reason = "Pending File Operations"}
+    )
+    
+    foreach ($reg in $regPaths) {
+        if (Test-Path "$($reg.Path)\$($reg.Key)" -ErrorAction SilentlyContinue) {
+            $rebootRequired = $true
+            $reasons += $reg.Reason
+        } elseif ($reg.Key -eq "PendingFileRenameOperations") {
+            $prop = Get-ItemProperty -Path $reg.Path -Name $reg.Key -ErrorAction SilentlyContinue
+            if ($prop -and $prop.PendingFileRenameOperations) {
+                $rebootRequired = $true
+                $reasons += $reg.Reason
             }
         }
-    } else {
-        Write-Log "PSWindowsUpdate module already installed (v$($module.Version))" -Level Info
+    }
+    
+    return @{
+        Required = $rebootRequired
+        Reasons = $reasons
+    }
+}
+
+# ============================================================================
+# Main Execution
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level Info
+    Write-Log "  WINDOWS UPDATE INSTALLATION" -Level Info
+    Write-Log "========================================" -Level Info
+    Write-Log "PowerShell: $($PSVersionTable.PSVersion)" -Level Info
+    Write-Log "Categories: $($Categories -join ', ')" -Level Info
+    Write-Log "Max Updates: $MaxUpdates" -Level Info
+    Write-Log "Auto Reboot: $AutoReboot" -Level Info
+    
+    # Check pending reboot
+    if (!$IgnorePendingReboot) {
+        $rebootStatus = Test-PendingReboot
+        if ($rebootStatus.Required) {
+            Write-Log "REBOOT PENDING from: $($rebootStatus.Reasons -join ', ')" -Level Warning
+            Write-Log "Consider rebooting first or use -IgnorePendingReboot" -Level Warning
+            
+            # Don't exit, just warn
+        }
+    }
+    
+    # Install module if needed
+    if (!(Install-PSWindowsUpdateModule)) {
+        throw "Failed to setup PSWindowsUpdate module"
     }
     
     # Import module
     Import-Module PSWindowsUpdate -Force
-    Write-Log "PSWindowsUpdate module imported" -Level Info
+    Write-Log "Module imported successfully" -Level Success
     
-    # ============================================================================ #
-    # Check for pending reboot
-    # ============================================================================ #
-    
-    if (-not $IgnoreReboot) {
-        Write-Log "Checking for pending reboot..." -Level Info
-        
-        $rebootPending = $false
-        
-        # Check CBS/DISM pending
-        if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") {
-            $rebootPending = $true
-        }
-        
-        # Check Windows Update pending
-        if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") {
-            $rebootPending = $true
-        }
-        
-        # Check PendingFileRenameOperations
-        $pendingFileRename = Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name PendingFileRenameOperations -ErrorAction SilentlyContinue
-        if ($pendingFileRename) {
-            $rebootPending = $true
-        }
-        
-        if ($rebootPending) {
-            Write-Log "Reboot is pending from previous operations" -Level Warning
-            Write-Log "Consider rebooting before installing new updates, or use -IgnoreReboot to proceed anyway" -Level Warning
-        }
-    }
-    
-    # ============================================================================ #
-    # Check for available updates
-    # ============================================================================ #
-    
-    Write-Log "Scanning for available updates..." -Level Info
-    
-    $getUpdatesParams = @{
-        Category = $Categories
-        Verbose = $false
-    }
-    
-    $updates = Get-WindowsUpdate @getUpdatesParams
-    
-    if (-not $updates -or $updates.Count -eq 0) {
-        Write-Log "No updates available in specified categories" -Level Success
-        Set-IntuneSuccess -AppName 'WindowsUpdates' -Version (Get-Date -Format 'yyyy.MM.dd')
-        exit 0
-    }
-    
-    Write-Log "Found $($updates.Count) available updates:" -Level Info
-    foreach ($update in $updates) {
-        $sizeInMB = [math]::Round($update.Size / 1MB, 2)
-        Write-Log "  - $($update.Title) ($sizeInMB MB)" -Level Info
-    }
-    
-    # ============================================================================ #
-    # Install updates
-    # ============================================================================ #
-    
-    Write-Log "Installing updates..." -Level Info
-    
-    $installParams = @{
-        Category = $Categories
-        AcceptAll = $true
-        IgnoreReboot = $true
-        Verbose = $false
-    }
+    # Get available updates
+    Write-Log "`nScanning for updates..." -Level Info
     
     try {
-        $result = Install-WindowsUpdate @installParams
-
-        if ($result) {
-            $installedResults = @($result | Where-Object { $_.Result -eq 'Installed' })
-            $failedResults = @($result | Where-Object { $_.Result -eq 'Failed' })
-            $installedCount = $installedResults.Count
-            $failedCount = $failedResults.Count
-            
-            Write-Log "Installation complete: $installedCount installed, $failedCount failed" -Level Success
-            
-            # Log individual results
-            foreach ($update in $result) {
-                $level = if ($update.Result -eq 'Installed') { 'Success' } else { 'Error' }
-                Write-Log "  $($update.Result): $($update.Title)" -Level $level
-            }
-            
-            # Check if reboot is required
-            $rebootRequired = ($result | Where-Object { $_.RebootRequired -eq $true }).Count -gt 0
-            
-            if ($rebootRequired) {
-                Write-Log "System reboot is required to complete installation" -Level Warning
-                
-                if ($AutoReboot) {
-                    if ($ScheduleReboot) {
-                        Write-Log "Scheduling reboot for $ScheduleTime..." -Level Info
-                        
-                        $scheduledTime = [DateTime]::ParseExact($ScheduleTime, "HH:mm", $null)
-                        $now = Get-Date
-                        
-                        # If scheduled time is in the past today, schedule for tomorrow
-                        if ($scheduledTime -lt $now) {
-                            $scheduledTime = $scheduledTime.AddDays(1)
-                        }
-                        
-                        $secondsUntilReboot = ($scheduledTime - $now).TotalSeconds
-                        
-                        shutdown.exe /r /t $secondsUntilReboot /c "Windows Updates installed - reboot scheduled" /d p:2:17
-                        Write-Log "Reboot scheduled for $($scheduledTime.ToString('yyyy-MM-dd HH:mm'))" -Level Success
-                    } else {
-                        Write-Log "Initiating automatic reboot in 60 seconds..." -Level Warning
-                        shutdown.exe /r /t 60 /c "Windows Updates installed - automatic reboot" /d p:2:17
-                    }
-                } else {
-                    Write-Log "Please reboot the system manually to complete update installation" -Level Warning
-                }
-            }
-            
-            # Record success if no failures
-            if ($failedCount -eq 0) {
-                Set-IntuneSuccess -AppName 'WindowsUpdates' -Version (Get-Date -Format 'yyyy.MM.dd')
-            }
-            
-        } else {
-            Write-Log "No updates were installed" -Level Warning
+        # Build parameters for Get-WindowsUpdate
+        $getParams = @{
+            MicrosoftUpdate = $true
+            IgnoreReboot = $true
         }
         
+        # Add category filter if specified
+        if ($Categories.Count -gt 0) {
+            $getParams['Category'] = $Categories
+        }
+        
+        $updates = @(Get-WindowsUpdate @getParams -ErrorAction Stop)
+        
+        if ($updates.Count -eq 0) {
+            Write-Log "No updates available" -Level Success
+            exit 0
+        }
+        
+        Write-Log "Found $($updates.Count) updates:" -Level Info
+        
+        # Display update list
+        $totalSizeMB = 0
+        foreach ($update in $updates[0..([Math]::Min($updates.Count, $MaxUpdates) - 1)]) {
+            $sizeMB = [Math]::Round($update.Size / 1MB, 2)
+            $totalSizeMB += $sizeMB
+            Write-Log "  • $($update.Title) [$sizeMB MB]" -Level Info
+        }
+        
+        if ($updates.Count -gt $MaxUpdates) {
+            Write-Log "  (Showing first $MaxUpdates of $($updates.Count) total updates)" -Level Warning
+        }
+        
+        Write-Log "Total download size: $([Math]::Round($totalSizeMB, 2)) MB" -Level Info
+        
     } catch {
-        Write-Log "Update installation failed: $_" -Level Error
+        Write-Log "Failed to get updates: $_" -Level Error
         throw
     }
     
-    Write-Log "=== Windows Update Installation Complete ===" -Level Success
+    # Install updates
+    Write-Log "`nInstalling updates..." -Level Info
     
-    exit 0
+    try {
+        # Build install parameters
+        $installParams = @{
+            MicrosoftUpdate = $true
+            IgnoreReboot = $true
+            AcceptAll = $true
+            MaxSize = $MaxUpdates
+        }
+        
+        if ($Categories.Count -gt 0) {
+            $installParams['Category'] = $Categories
+        }
+        
+        # Perform installation
+        $installResults = Install-WindowsUpdate @installParams -ErrorAction Stop
+        
+        # Process results - handle both single result and array
+        $results = @($installResults)
+        
+        $installed = @($results | Where-Object { $_.Result -eq 'Installed' })
+        $failed = @($results | Where-Object { $_.Result -eq 'Failed' })
+        $alreadyInstalled = @($results | Where-Object { $_.Result -eq 'NotNeeded' -or $_.Status -eq 'Installed' })
+        
+        Write-Log "`nInstallation Summary:" -Level Info
+        Write-Log "  Installed: $($installed.Count)" -Level $(if ($installed.Count -gt 0) { 'Success' } else { 'Info' })
+        Write-Log "  Already Installed: $($alreadyInstalled.Count)" -Level Info
+        Write-Log "  Failed: $($failed.Count)" -Level $(if ($failed.Count -gt 0) { 'Error' } else { 'Info' })
+        
+        # Log failed updates
+        if ($failed.Count -gt 0) {
+            Write-Log "`nFailed updates:" -Level Error
+            foreach ($fail in $failed) {
+                Write-Log "  ✗ $($fail.Title)" -Level Error
+            }
+        }
+        
+        # Check if any results require reboot
+        $rebootNeeded = $false
+        foreach ($result in $results) {
+            if ($result.RebootRequired -eq $true -or $result.RestartNeeded -eq $true) {
+                $rebootNeeded = $true
+                break
+            }
+        }
+        
+        if ($rebootNeeded) {
+            Write-Log "`nREBOOT REQUIRED to complete installation" -Level Warning
+            
+            if ($AutoReboot) {
+                Write-Log "Initiating automatic reboot in 60 seconds..." -Level Warning
+                Write-Log "Run 'shutdown /a' to cancel" -Level Warning
+                shutdown.exe /r /t 60 /c "Windows Updates completed - automatic reboot"
+            } else {
+                Write-Log "Please reboot manually to complete installation" -Level Warning
+            }
+        }
+        
+        # Set success code if we installed something
+        if ($installed.Count -gt 0) {
+            exit 0
+        } elseif ($alreadyInstalled.Count -gt 0 -and $failed.Count -eq 0) {
+            Write-Log "All applicable updates already installed" -Level Success
+            exit 0
+        } else {
+            exit 1
+        }
+        
+    } catch {
+        Write-Log "Installation failed: $_" -Level Error
+        Write-Log "Error details: $($_.Exception.Message)" -Level Error
+        throw
+    }
     
 } catch {
-    Write-Log "Windows Update process failed: $_" -Level Error
-    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level Error
+    Write-Log "`n[CRITICAL ERROR] $_" -Level Error
     exit 1
+    
 } finally {
-    if (-not $SkipLogging) {
-        Stop-Logging
-    }
+    Write-Log "`n========================================" -Level Info
+    Write-Log "Log saved to: $LogFile" -Level Info
+    Stop-Transcript | Out-Null
 }

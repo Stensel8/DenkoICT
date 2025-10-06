@@ -29,25 +29,15 @@
     Orchestrates Denko ICT device deployment by running child scripts in sequence.
 
 .DESCRIPTION
-    Downloads custom functions, validates network connectivity, and executes deployment scripts.
-    All logs go to C:\DenkoICT\Logs. All downloads go to C:\DenkoICT\Download.
+    Ensures PowerShell 7 is installed, downloads deployment scripts from GitHub, and executes them.
+    All logs are saved to C:\DenkoICT\Logs. All downloads go to C:\DenkoICT\Download.
 
 .PARAMETER ScriptBaseUrl
     Base URL for downloading scripts from GitHub.
 
-.PARAMETER NetworkRetryCount
-    Number of retry attempts for network connectivity checks.
-
-.PARAMETER NetworkRetryDelaySeconds
-    Delay in seconds between network retry attempts.
-
 .EXAMPLE
     .\ps_Deploy-Device.ps1
     Runs full deployment with default settings.
-
-.EXAMPLE
-    .\ps_Deploy-Device.ps1 -NetworkRetryCount 10
-    Runs deployment with extended network retry attempts.
 
 .NOTES
     Version      : 2.0.0
@@ -58,14 +48,8 @@
 
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory = $false)]
-    [ValidateNotNullOrEmpty()]
     [string]$ScriptBaseUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts",
-
-    [Parameter(Mandatory = $false)]
     [int]$NetworkRetryCount = 5,
-
-    [Parameter(Mandatory = $false)]
     [int]$NetworkRetryDelaySeconds = 10
 )
 
@@ -76,690 +60,392 @@ $ErrorActionPreference = 'Continue'
 $script:LogDirectory = 'C:\DenkoICT\Logs'
 $script:DownloadDirectory = 'C:\DenkoICT\Download'
 $script:TranscriptPath = $null
-$script:TranscriptStarted = $false
 
 # ============================================================================
-# BASIC FUNCTIONS (Before Custom-Functions loaded)
+# POWERSHELL 7 DETECTION AND INSTALLATION
+# ============================================================================
+
+function Test-PowerShell7 {
+    <#
+    .SYNOPSIS
+        Checks if PowerShell 7 is installed and available.
+    #>
+    
+    # Check if we're already running in PowerShell 7+
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        Write-Host "[PS7] Already running in PowerShell $($PSVersionTable.PSVersion)" -ForegroundColor Green
+        return $true
+    }
+    
+    # Check if pwsh.exe exists
+    $pwshPath = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if ($pwshPath) {
+        Write-Host "[PS7] PowerShell 7 found at: $($pwshPath.Source)" -ForegroundColor Green
+        return $true
+    }
+    
+    # Check common installation paths
+    $commonPaths = @(
+        "$env:ProgramFiles\PowerShell\7\pwsh.exe",
+        "$env:ProgramFiles\PowerShell\7-preview\pwsh.exe",
+        "${env:ProgramFiles(x86)}\PowerShell\7\pwsh.exe"
+    )
+    
+    foreach ($path in $commonPaths) {
+        if (Test-Path $path) {
+            Write-Host "[PS7] PowerShell 7 found at: $path" -ForegroundColor Green
+            return $true
+        }
+    }
+    
+    Write-Host "[PS7] PowerShell 7 not found" -ForegroundColor Yellow
+    return $false
+}
+
+function Install-PowerShell7 {
+    <#
+    .SYNOPSIS
+        Installs PowerShell 7 using various methods.
+    #>
+    
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  INSTALLING POWERSHELL 7" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    # Method 1: Try WinGet first (if available)
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if ($winget) {
+        Write-Host "[PS7] Installing via WinGet..." -ForegroundColor Cyan
+        try {
+            $result = Start-Process -FilePath "winget" -ArgumentList "install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements" -Wait -PassThru
+            if ($result.ExitCode -eq 0) {
+                Write-Host "[PS7] Successfully installed via WinGet" -ForegroundColor Green
+                return $true
+            }
+        } catch {
+            Write-Host "[PS7] WinGet installation failed: $_" -ForegroundColor Yellow
+        }
+    }
+    
+    # Method 2: Direct MSI download
+    Write-Host "[PS7] Downloading PowerShell 7 MSI installer..." -ForegroundColor Cyan
+    $msiUrl = "https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7-win-x64.msi"
+    $msiPath = Join-Path $script:DownloadDirectory "PowerShell-7.msi"
+    
+    try {
+        # Ensure download directory exists
+        if (!(Test-Path $script:DownloadDirectory)) {
+            New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
+        }
+        
+        # Download MSI
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($msiUrl, $msiPath)
+        
+        if (Test-Path $msiPath) {
+            Write-Host "[PS7] Installing from MSI..." -ForegroundColor Cyan
+            $msiArguments = "/i `"$msiPath`" /quiet ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ADD_FILE_CONTEXT_MENU_RUNPOWERSHELL=1 ENABLE_PSREMOTING=0 REGISTER_MANIFEST=1"
+            $result = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArguments -Wait -PassThru
+            
+            if ($result.ExitCode -eq 0) {
+                Write-Host "[PS7] Successfully installed from MSI" -ForegroundColor Green
+                
+                # Update PATH immediately
+                $pwshPath = "$env:ProgramFiles\PowerShell\7"
+                $env:PATH = "$pwshPath;$env:PATH"
+                
+                return $true
+            } else {
+                Write-Host "[PS7] MSI installation failed with code: $($result.ExitCode)" -ForegroundColor Red
+            }
+        }
+    } catch {
+        Write-Host "[PS7] Failed to download/install MSI: $_" -ForegroundColor Red
+    }
+    
+    # Method 3: Install script from PowerShell Gallery
+    Write-Host "[PS7] Trying PowerShell Gallery install script..." -ForegroundColor Cyan
+    try {
+        Invoke-Expression "& { $(Invoke-RestMethod 'https://aka.ms/install-powershell.ps1') } -UseMSI -Quiet"
+        Write-Host "[PS7] Installation script completed" -ForegroundColor Green
+        return $true
+    } catch {
+        Write-Host "[PS7] Gallery script failed: $_" -ForegroundColor Red
+    }
+    
+    return $false
+}
+
+function Get-PowerShell7Path {
+    <#
+    .SYNOPSIS
+        Gets the path to pwsh.exe.
+    #>
+    
+    # Check if pwsh is in PATH
+    $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if ($pwsh) {
+        return $pwsh.Source
+    }
+    
+    # Check common locations
+    $paths = @(
+        "$env:ProgramFiles\PowerShell\7\pwsh.exe",
+        "$env:ProgramFiles\PowerShell\7-preview\pwsh.exe",
+        "${env:ProgramFiles(x86)}\PowerShell\7\pwsh.exe"
+    )
+    
+    foreach ($path in $paths) {
+        if (Test-Path $path) {
+            return $path
+        }
+    }
+    
+    return $null
+}
+
+# ============================================================================
+# BASIC FUNCTIONS
 # ============================================================================
 
 function Initialize-Directories {
-    <#
-    .SYNOPSIS
-        Creates required directories for deployment.
-    #>
-    if (-not (Test-Path $script:LogDirectory)) {
-        $null = New-Item -Path $script:LogDirectory -ItemType Directory -Force
+    if (!(Test-Path $script:LogDirectory)) {
+        New-Item -Path $script:LogDirectory -ItemType Directory -Force | Out-Null
     }
-    if (-not (Test-Path $script:DownloadDirectory)) {
-        $null = New-Item -Path $script:DownloadDirectory -ItemType Directory -Force
+    if (!(Test-Path $script:DownloadDirectory)) {
+        New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
     }
 }
 
 function Start-DeploymentLogging {
-    <#
-    .SYNOPSIS
-        Starts transcript logging for deployment.
-    #>
-    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $script:TranscriptPath = Join-Path $script:LogDirectory "Deployment-$timestamp.log"
-
+    $script:TranscriptPath = Join-Path $script:LogDirectory "ps_Deploy-Device.ps1.log"
+    
     try {
         Start-Transcript -Path $script:TranscriptPath -Force | Out-Null
-        $script:TranscriptStarted = $true
-        Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [INFO] Started logging to: $script:TranscriptPath" -ForegroundColor Cyan
+        Write-Host "[INFO] Logging to: $script:TranscriptPath" -ForegroundColor Cyan
     } catch {
         Write-Warning "Failed to start transcript: $_"
-        $script:TranscriptPath = $null
     }
 }
 
 function Stop-DeploymentLogging {
-    <#
-    .SYNOPSIS
-        Stops transcript logging.
-    #>
-    if ($script:TranscriptStarted) {
-        try {
-            Stop-Transcript | Out-Null
-        } catch {
-            # Silently ignore
-        }
+    try {
+        Stop-Transcript | Out-Null
+    } catch {
+        # Silently ignore
     }
 }
 
 function Get-ScriptFromGitHub {
-    <#
-    .SYNOPSIS
-        Downloads a script from GitHub with retry logic.
-    #>
-    [CmdletBinding()]
-    [OutputType([bool])]
     param(
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
         [string]$ScriptName,
-
         [int]$MaxRetries = 3
     )
-
+    
     $url = "$ScriptBaseUrl/$ScriptName"
     $localPath = Join-Path $script:DownloadDirectory $ScriptName
-
-    $attempt = 0
-
-    do {
-        $attempt++
-
+    
+    for ($i = 1; $i -le $MaxRetries; $i++) {
         try {
-            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Downloading $ScriptName (attempt $attempt/$MaxRetries)..." -ForegroundColor Cyan
-
+            Write-Host "Downloading $ScriptName (attempt $i/$MaxRetries)..." -ForegroundColor Cyan
             $webClient = New-Object System.Net.WebClient
             $webClient.Encoding = [System.Text.Encoding]::UTF8
             $content = $webClient.DownloadString($url)
-
-            if ([string]::IsNullOrWhiteSpace($content)) {
-                throw "Downloaded content is empty"
+            
+            if (![string]::IsNullOrWhiteSpace($content)) {
+                [System.IO.File]::WriteAllText($localPath, $content, (New-Object System.Text.UTF8Encoding $false))
+                Write-Host "Downloaded: $ScriptName" -ForegroundColor Green
+                return $true
             }
-
-            [System.IO.File]::WriteAllText($localPath, $content, (New-Object System.Text.UTF8Encoding $false))
-
-            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Downloaded: $ScriptName" -ForegroundColor Green
-            return $true
         } catch {
-            if ($attempt -ge $MaxRetries) {
-                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Failed to download $ScriptName after $MaxRetries attempts: $_" -ForegroundColor Red
+            if ($i -eq $MaxRetries) {
+                Write-Host "Failed to download $ScriptName : $_" -ForegroundColor Red
                 return $false
             }
-            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Download failed, retrying..." -ForegroundColor Yellow
             Start-Sleep -Seconds 5
         }
-    } while ($attempt -lt $MaxRetries)
-
+    }
     return $false
 }
 
-function Get-DeploymentScript {
-    <#
-    .SYNOPSIS
-        Gets a deployment script path, checking multiple locations.
-
-    .DESCRIPTION
-        Priority order:
-        1. Download directory (C:\DenkoICT\Download) - for pre-downloaded scripts
-        2. Script directory (where ps_Deploy-Device.ps1 is located)
-        3. Current directory
-        4. Download from GitHub as fallback
-    #>
-    [CmdletBinding()]
-    [OutputType([string])]
+function Invoke-DeploymentScript {
     param(
-        [Parameter(Mandatory)]
-        [ValidateNotNullOrEmpty()]
-        [string]$ScriptName
-    )
-
-    # Priority 1: Check download directory FIRST (pre-downloaded scripts)
-    $downloadPath = Join-Path $script:DownloadDirectory $ScriptName
-    if (Test-Path $downloadPath) {
-        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using pre-downloaded script: $ScriptName" -ForegroundColor Cyan
-        return $downloadPath
-    }
-
-    # Priority 2: Check script directory - handle empty $PSCommandPath gracefully
-    if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
-        $scriptDir = Split-Path -Parent $PSCommandPath
-
-        if (-not [string]::IsNullOrWhiteSpace($scriptDir)) {
-            $localScript = Join-Path $scriptDir $ScriptName
-
-            if (Test-Path $localScript) {
-                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using local script: $ScriptName" -ForegroundColor Cyan
-                return $localScript
-            }
-        }
-    }
-
-    # Priority 3: Check current directory
-    $currentDirScript = Join-Path (Get-Location) $ScriptName
-    if (Test-Path $currentDirScript) {
-        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using script from current directory: $ScriptName" -ForegroundColor Cyan
-        return $currentDirScript
-    }
-
-    # Priority 4: Download from GitHub as final fallback
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Script not found locally, downloading from GitHub..." -ForegroundColor Yellow
-
-    if (Get-ScriptFromGitHub -ScriptName $ScriptName) {
-        return $downloadPath
-    }
-
-    throw "Failed to locate or download script: $ScriptName"
-}
-
-function Initialize-DeploymentScripts {
-    <#
-    .SYNOPSIS
-        Pre-downloads all required deployment scripts from GitHub.
-
-    .DESCRIPTION
-        Downloads all scripts upfront so deployment can run locally without
-        repeated network calls. This is critical for autounattend.xml scenarios.
-    #>
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param(
-        [Parameter(Mandatory)]
-        [string[]]$ScriptNames
-    )
-
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "  PRE-DOWNLOADING DEPLOYMENT SCRIPTS" -ForegroundColor Cyan
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host ""
-
-    $downloaded = 0
-    $skipped = 0
-    $failed = 0
-
-    foreach ($scriptName in $ScriptNames) {
-        # Check if already exists in download directory
-        $downloadPath = Join-Path $script:DownloadDirectory $scriptName
-
-        if (Test-Path $downloadPath) {
-            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Already exists: $scriptName" -ForegroundColor Gray
-            $skipped++
-            continue
-        }
-
-        # Check if exists locally (script directory or current directory)
-        $foundLocally = $false
-
-        if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
-            $scriptDir = Split-Path -Parent $PSCommandPath
-            if (-not [string]::IsNullOrWhiteSpace($scriptDir)) {
-                $localPath = Join-Path $scriptDir $scriptName
-                if (Test-Path $localPath) {
-                    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Copying from script directory: $scriptName" -ForegroundColor Cyan
-                    Copy-Item -Path $localPath -Destination $downloadPath -Force
-                    $downloaded++
-                    $foundLocally = $true
-                }
-            }
-        }
-
-        if (-not $foundLocally) {
-            $currentDirPath = Join-Path (Get-Location) $scriptName
-            if (Test-Path $currentDirPath) {
-                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Copying from current directory: $scriptName" -ForegroundColor Cyan
-                Copy-Item -Path $currentDirPath -Destination $downloadPath -Force
-                $downloaded++
-                $foundLocally = $true
-            }
-        }
-
-        # Download from GitHub if not found locally
-        if (-not $foundLocally) {
-            if (Get-ScriptFromGitHub -ScriptName $scriptName) {
-                $downloaded++
-            } else {
-                $failed++
-                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] WARNING: Failed to download $scriptName" -ForegroundColor Yellow
-            }
-        }
-    }
-
-    Write-Host ""
-    Write-Host "Download Summary:" -ForegroundColor Cyan
-    Write-Host "  Downloaded/Copied: $downloaded" -ForegroundColor Green
-    Write-Host "  Already existed: $skipped" -ForegroundColor Gray
-    if ($failed -gt 0) {
-        Write-Host "  Failed: $failed" -ForegroundColor Red
-    }
-    Write-Host ""
-
-    return ($failed -eq 0)
-}
-
-function Import-CustomFunctions {
-    <#
-    .SYNOPSIS
-        Imports ps_Custom-Functions.ps1 from local or GitHub.
-    #>
-    [CmdletBinding()]
-    param()
-
-    $targetPath = Join-Path $script:DownloadDirectory "ps_Custom-Functions.ps1"
-
-    # Check for local version first - handle empty $PSCommandPath gracefully
-    $sourceFile = $null
-    $localFunctions = $null
-
-    # Try to determine script directory safely
-    if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
-        $scriptDir = Split-Path -Parent $PSCommandPath
-
-        if (-not [string]::IsNullOrWhiteSpace($scriptDir)) {
-            $localFunctions = Join-Path $scriptDir "ps_Custom-Functions.ps1"
-
-            if (Test-Path $localFunctions) {
-                Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using local custom functions from: $scriptDir" -ForegroundColor Cyan
-                $sourceFile = $localFunctions
-            }
-        }
-    }
-
-    # Fallback: Check current directory
-    if (-not $sourceFile) {
-        $currentDirFunctions = Join-Path (Get-Location) "ps_Custom-Functions.ps1"
-        if (Test-Path $currentDirFunctions) {
-            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using custom functions from current directory" -ForegroundColor Cyan
-            $sourceFile = $currentDirFunctions
-        }
-    }
-
-    # Fallback: Check download directory
-    if (-not $sourceFile -and (Test-Path $targetPath)) {
-        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Using previously downloaded custom functions" -ForegroundColor Cyan
-        $sourceFile = $targetPath
-    }
-
-    # Final fallback: Download from GitHub
-    if (-not $sourceFile) {
-        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Downloading custom functions from GitHub..." -ForegroundColor Cyan
-        $sourceFile = Get-DeploymentScript -ScriptName "ps_Custom-Functions.ps1"
-    }
-
-    # Validate we have a valid file path
-    if ([string]::IsNullOrWhiteSpace($sourceFile)) {
-        throw "Failed to locate or download ps_Custom-Functions.ps1"
-    }
-
-    if (-not (Test-Path $sourceFile)) {
-        throw "Custom functions file not found at: $sourceFile"
-    }
-
-    # Validate syntax
-    $errors = $null
-    $content = $null
-
-    try {
-        $content = Get-Content $sourceFile -Raw -ErrorAction Stop
-    } catch {
-        throw "Failed to read custom functions file from '$sourceFile': $_"
-    }
-
-    if ([string]::IsNullOrWhiteSpace($content)) {
-        throw "Custom functions file is empty: $sourceFile"
-    }
-
-    $null = [System.Management.Automation.PSParser]::Tokenize($content, [ref]$errors)
-
-    if ($errors.Count -gt 0) {
-        Write-Host "Syntax errors detected in custom functions:" -ForegroundColor Red
-        foreach ($err in $errors) {
-            Write-Host "  Line $($err.Token.StartLine): $($err.Message)" -ForegroundColor Red
-        }
-        throw "Custom functions file contains syntax errors"
-    }
-
-    # Import into script scope (not function scope)
-    $script:CustomFunctionsPath = $sourceFile
-    Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Custom functions imported successfully from: $sourceFile" -ForegroundColor Green
-}
-
-function Invoke-DeploymentStep {
-    <#
-    .SYNOPSIS
-        Executes a single deployment step with proper error handling and logging.
-    #>
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param(
-        [Parameter(Mandatory)]
-        [string]$ScriptName,
-
-        [Parameter(Mandatory)]
+        [string]$ScriptPath,
         [string]$DisplayName,
-
-        [hashtable]$ScriptParameters,
-
-        [switch]$RequiresNetwork,
-        [switch]$RequiresStableNetwork
+        [switch]$UsePS7
     )
 
-    Write-Log "Starting: $DisplayName" -Level Info
-    Set-DeploymentStepStatus -StepName $DisplayName -Status 'Running'
+    Write-Host "`n[RUNNING] $DisplayName" -ForegroundColor Yellow
 
-    # Check network if required
-    if ($RequiresNetwork) {
-        $networkAvailable = if ($RequiresStableNetwork) {
-            Wait-ForNetworkStability -MaxRetries $NetworkRetryCount -DelaySeconds $NetworkRetryDelaySeconds -ContinuousCheck
+    # Determine how to run the script
+    if ($UsePS7) {
+        $pwshPath = Get-PowerShell7Path
+        if ($pwshPath) {
+            Write-Host "  → Executing with PowerShell 7" -ForegroundColor Cyan
+            # Use -NoLogo to reduce output, ensure clean module state with fresh session
+            $result = Start-Process -FilePath $pwshPath -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$ScriptPath`"" -Wait -PassThru
         } else {
-            Wait-ForNetworkStability -MaxRetries $NetworkRetryCount -DelaySeconds $NetworkRetryDelaySeconds
+            Write-Host "  → PS7 not available, using Windows PowerShell" -ForegroundColor Yellow
+            $result = Start-Process -FilePath "powershell.exe" -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$ScriptPath`"" -Wait -PassThru
         }
-
-        if (-not $networkAvailable) {
-            Write-Log "Network not available for $DisplayName, skipping..." -Level Warning
-            Set-DeploymentStepStatus -StepName $DisplayName -Status 'Skipped' -ErrorMessage 'Network not available'
-            return $false
-        }
+    } else {
+        # Run directly in current session
+        & $ScriptPath
+        $result = [PSCustomObject]@{ ExitCode = $LASTEXITCODE }
     }
 
-    # Download script
-    try {
-        $scriptPath = Get-DeploymentScript -ScriptName $ScriptName
-    } catch {
-        Write-Log "Failed to locate script $ScriptName : $_" -Level Error
-        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Failed' -ErrorMessage "Script not found: $_"
+    if ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode) {
+        Write-Host "  ✓ Completed: $DisplayName" -ForegroundColor Green
+        return $true
+    } elseif ($result.ExitCode -eq 3010) {
+        Write-Host "  ✓ Completed: $DisplayName (reboot required)" -ForegroundColor Green
+        return $true
+    } else {
+        Write-Host "  ✗ Failed: $DisplayName (exit code: $($result.ExitCode))" -ForegroundColor Red
         return $false
     }
-
-    # Execute script with proper error handling
-    Write-Log "Executing $ScriptName..." -Level Info
-
-    # Clear LASTEXITCODE before execution
-    $global:LASTEXITCODE = 0
-
-    # Execute in try-catch to handle terminating errors from child scripts
-    $scriptFailed = $false
-    $scriptError = $null
-
-    try {
-        # Set ErrorAction to Continue for non-terminating errors
-        $previousErrorActionPreference = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-
-        try {
-            if ($ScriptParameters -and $ScriptParameters.Count -gt 0) {
-                & $scriptPath @ScriptParameters
-            } else {
-                & $scriptPath
-            }
-        } finally {
-            $ErrorActionPreference = $previousErrorActionPreference
-        }
-    } catch {
-        # Catch terminating errors from child scripts
-        $scriptFailed = $true
-        $scriptError = $_.Exception.Message
-
-        # Check if it's a common non-critical error
-        if ($scriptError -match "variable.*cannot be retrieved|has not been set") {
-            Write-Log "Script encountered non-critical error (continuing): $scriptError" -Level Warning
-            $scriptFailed = $false
-        } else {
-            Write-Log "Script threw terminating error: $scriptError" -Level Error
-        }
-    }
-
-    # Check exit code after execution
-    $exitCode = $global:LASTEXITCODE
-
-    # If script threw a critical terminating error, mark as failed
-    if ($scriptFailed) {
-        Write-Log "Failed: $DisplayName" -Level Error
-        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Failed' -ErrorMessage $scriptError
-        return $false
-    }
-
-    # Exit code 0 or null = success
-    if (-not $exitCode -or $exitCode -eq 0) {
-        Write-Log "Completed: $DisplayName" -Level Success
-        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Success'
-        return $true
-    }
-
-    # Exit code 3010 = success but reboot required
-    if ($exitCode -eq 3010) {
-        Write-Log "Completed: $DisplayName (reboot required)" -Level Success
-        Set-DeploymentStepStatus -StepName $DisplayName -Status 'Success' -ExitCode $exitCode
-        return $true
-    }
-
-    # Non-zero exit code = failure
-    Write-Log "Step completed with exit code: $exitCode" -Level Warning
-    Set-DeploymentStepStatus -StepName $DisplayName -Status 'Failed' -ExitCode $exitCode
-    return $false
 }
 
 # ============================================================================
-# MAIN DEPLOYMENT ORCHESTRATION
+# MAIN ORCHESTRATION
 # ============================================================================
 
 function Start-Deployment {
-    <#
-    .SYNOPSIS
-        Main deployment orchestration logic.
-    #>
-    [CmdletBinding()]
-    param()
-
-    # Deployment steps configuration
-    $deploymentSteps = @(
-        @{
-            Script = 'ps_Install-Winget.ps1'
-            Name = 'WinGet Installation'
-            RequiresNetwork = $true
-            RequiresStableNetwork = $false
-            Critical = $false
-        },
-        @{
-            Script = 'ps_Install-Drivers.ps1'
-            Name = 'Driver Updates'
-            RequiresNetwork = $true
-            RequiresStableNetwork = $true
-            Critical = $false
-        },
-        @{
-            Script = 'ps_Install-Applications.ps1'
-            Name = 'Application Installation'
-            RequiresNetwork = $true
-            RequiresStableNetwork = $true
-            Critical = $false
-            RequiresWinGet = $true
-        },
-        @{
-            Script = 'ps_Set-Wallpaper.ps1'
-            Name = 'Wallpaper Configuration'
-            RequiresNetwork = $true
-            RequiresStableNetwork = $false
-            Critical = $false
-        },
-        @{
-            Script = 'ps_Install-WindowsUpdates.ps1'
-            Name = 'Windows Updates'
-            RequiresNetwork = $true
-            RequiresStableNetwork = $false
-            Critical = $false
-        }
+    # Download all required scripts first
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  DOWNLOADING DEPLOYMENT SCRIPTS" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    $scripts = @(
+        'ps_Custom-Functions.ps1',
+        'ps_Install-Winget.ps1',
+        'ps_Install-Drivers.ps1', 
+        'ps_Install-Applications.ps1',
+        'ps_Set-Wallpaper.ps1',
+        'ps_Remove-Bloat.ps1',
+        'ps_Install-WindowsUpdates.ps1'
     )
-
-    $result = @{
-        Success = 0
-        Failed = 0
-        Skipped = 0
-    }
-
-    $wingetSucceeded = $false
-
-    Write-Log "═══════════════════════════════════════════════════════════" -Level Info
-    Write-Log "  DENKO ICT DEVICE DEPLOYMENT" -Level Info
-    Write-Log "═══════════════════════════════════════════════════════════" -Level Info
-
-    foreach ($step in $deploymentSteps) {
-        $parameters = if ($step.ContainsKey('Parameters')) { $step.Parameters } else { $null }
-
-        # Track WinGet installation
-        if ($step.Script -eq 'ps_Install-Winget.ps1') {
-            $wingetSucceeded = Invoke-DeploymentStep `
-                -ScriptName $step.Script `
-                -DisplayName $step.Name `
-                -ScriptParameters $parameters `
-                -RequiresNetwork:$step.RequiresNetwork `
-                -RequiresStableNetwork:$step.RequiresStableNetwork
-
-            if ($wingetSucceeded) {
-                $result.Success++
-
-                # Refresh PATH immediately to make WinGet available for subsequent scripts
-                Write-Log "Refreshing environment PATH to make WinGet available..." -Level Info
-                $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
-                Write-Log "PATH refreshed successfully" -Level Success
-            } else {
-                $result.Failed++
-                Write-Log "WinGet installation failed, but continuing deployment..." -Level Warning
+    
+    foreach ($script in $scripts) {
+        $localPath = Join-Path $script:DownloadDirectory $script
+        
+        # Check if already exists locally
+        if (Test-Path $localPath) {
+            Write-Host "Already exists: $script" -ForegroundColor Gray
+            continue
+        }
+        
+        # Try script directory
+        if ($PSCommandPath) {
+            $scriptDirPath = Join-Path (Split-Path $PSCommandPath -Parent) $script
+            if (Test-Path $scriptDirPath) {
+                Copy-Item $scriptDirPath $localPath
+                Write-Host "Copied from local: $script" -ForegroundColor Green
+                continue
             }
+        }
+        
+        # Download from GitHub
+        Get-ScriptFromGitHub -ScriptName $script | Out-Null
+    }
+    
+    # Check if PowerShell 7 is available
+    $hasPS7 = Test-PowerShell7
+    
+    # Define deployment steps
+    $steps = @(
+        @{ Script = 'ps_Install-Winget.ps1'; Name = 'WinGet Installation'; UsePS7 = $false }
+        @{ Script = 'ps_Install-Drivers.ps1'; Name = 'Driver Updates for HP and Dell'; UsePS7 = $true }
+        @{ Script = 'ps_Install-Applications.ps1'; Name = 'Applications'; UsePS7 = $true }
+        @{ Script = 'ps_Remove-Bloat.ps1'; Name = 'Bloatware Removal'; UsePS7 = $true }
+        @{ Script = 'ps_Set-Wallpaper.ps1'; Name = 'Wallpaper Configuration'; UsePS7 = $true }
+        @{ Script = 'ps_Install-WindowsUpdates.ps1'; Name = 'Windows Updates'; UsePS7 = $true }
+    )
+    
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  EXECUTING DEPLOYMENT STEPS" -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
+    
+    $results = @{ Success = 0; Failed = 0; Skipped = 0 }
+    
+    foreach ($step in $steps) {
+        $scriptPath = Join-Path $script:DownloadDirectory $step.Script
+        
+        if (!(Test-Path $scriptPath)) {
+            Write-Host "`n[SKIPPED] $($step.Name) - Script not found" -ForegroundColor Yellow
+            $results.Skipped++
             continue
         }
-
-        # Skip steps that require WinGet if it's not available
-        if ($step.ContainsKey('RequiresWinGet') -and $step.RequiresWinGet -and -not $wingetSucceeded) {
-            Write-Log "Skipping $($step.Name) - WinGet not available" -Level Warning
-            Set-DeploymentStepStatus -StepName $step.Name -Status 'Skipped' -ErrorMessage 'WinGet not available'
-            $result.Skipped++
-            continue
-        }
-
-        # Execute step
-        $stepResult = Invoke-DeploymentStep `
-            -ScriptName $step.Script `
-            -DisplayName $step.Name `
-            -ScriptParameters $parameters `
-            -RequiresNetwork:$step.RequiresNetwork `
-            -RequiresStableNetwork:$step.RequiresStableNetwork
-
-        if ($stepResult) {
-            $result.Success++
+        
+        $success = Invoke-DeploymentScript -ScriptPath $scriptPath -DisplayName $step.Name -UsePS7:($step.UsePS7 -and $hasPS7)
+        
+        if ($success) {
+            $results.Success++
         } else {
-            $result.Failed++
-            Write-Log "Step failed, continuing to next step..." -Level Warning
+            $results.Failed++
         }
     }
-
-    return $result
+    
+    # Summary
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  DEPLOYMENT COMPLETE" -ForegroundColor Green
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "Success: $($results.Success)" -ForegroundColor Green
+    Write-Host "Failed: $($results.Failed)" -ForegroundColor $(if ($results.Failed -gt 0) { 'Red' } else { 'Gray' })
+    Write-Host "Skipped: $($results.Skipped)" -ForegroundColor $(if ($results.Skipped -gt 0) { 'Yellow' } else { 'Gray' })
+    Write-Host "Log: $script:TranscriptPath" -ForegroundColor Cyan
 }
 
 # ============================================================================
-# SCRIPT ENTRY POINT
+# ENTRY POINT
 # ============================================================================
 
 try {
-    # Pre-flight admin check
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]$identity
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw "This script requires administrative privileges. Please run as Administrator."
-    }
-
-    # Initialize environment
+    # Initialize
     Initialize-Directories
     Start-DeploymentLogging
-
-    # Import custom functions (critical - must succeed)
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    
+    Write-Host "`n========================================" -ForegroundColor Cyan
     Write-Host "  DENKO ICT DEVICE DEPLOYMENT" -ForegroundColor Cyan
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host ""
-
-    Import-CustomFunctions
-
-    # Dot-source at script scope
-    . $script:CustomFunctionsPath
-
-    # Verify functions loaded
-    if (-not (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
-        throw "Custom functions failed to load properly. Write-Log function not found."
-    }
-
-    # Initial network check with extended retry
-    Write-Log "Performing initial network check..." -Level Info
-    if (-not (Test-NetworkConnectivity)) {
-        Write-Log "No network connectivity detected" -Level Warning
-        Write-Log "Waiting for network (up to 2 minutes)..." -Level Info
-
-        $networkAvailable = Wait-ForNetworkStability -MaxRetries 12 -DelaySeconds 10
-
-        if (-not $networkAvailable) {
-            Write-Log "Network still unavailable - some steps will be skipped" -Level Warning
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "PowerShell Version: $($PSVersionTable.PSVersion)" -ForegroundColor Cyan
+    
+    # PowerShell 7 check and installation
+    if ($PSVersionTable.PSVersion.Major -lt 7) {
+        Write-Host "`nRunning in Windows PowerShell $($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)" -ForegroundColor Yellow
+        
+        if (!(Test-PowerShell7)) {
+            Write-Host "PowerShell 7 is required for optimal deployment" -ForegroundColor Yellow
+            
+            $install = Install-PowerShell7
+            if ($install -and (Test-PowerShell7)) {
+                Write-Host "`nPowerShell 7 installed successfully!" -ForegroundColor Green
+                
+                # Option to restart in PS7
+                $pwshPath = Get-PowerShell7Path
+                if ($pwshPath) {
+                    Write-Host "`nRestarting deployment in PowerShell 7..." -ForegroundColor Cyan
+                    Start-Process -FilePath $pwshPath -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"" -Verb RunAs
+                    exit 0
+                }
+            } else {
+                Write-Host "`nContinuing with Windows PowerShell (some features may be limited)" -ForegroundColor Yellow
+            }
         }
-    } else {
-        Write-Log "Network connectivity confirmed" -Level Success
     }
-
-    # Pre-download all deployment scripts if network is available
-    if (Test-NetworkConnectivity) {
-        Write-Log "Pre-downloading deployment scripts..." -Level Info
-
-        $deploymentScripts = @(
-            'ps_Install-Winget.ps1'
-            'ps_Install-Drivers.ps1'
-            'ps_Install-Applications.ps1'
-            'ps_Set-Wallpaper.ps1'
-            'ps_Install-WindowsUpdates.ps1'
-        )
-
-        $downloadSuccess = Initialize-DeploymentScripts -ScriptNames $deploymentScripts
-
-        if ($downloadSuccess) {
-            Write-Log "All deployment scripts ready" -Level Success
-        } else {
-            Write-Log "Some scripts failed to download, will retry during execution" -Level Warning
-        }
-    } else {
-        Write-Log "Skipping script pre-download (no network)" -Level Warning
-        Write-Log "Will attempt to use local scripts or download individually" -Level Info
-    }
-
+    
     # Run deployment
-    Write-Log "" -Level Info
-    $null = Start-Deployment
-
-    # Show deployment summary
-    Write-Log "" -Level Info
-    Show-DeploymentSummary -Title "DENKO ICT DEPLOYMENT COMPLETE"
-
-    Write-Log "" -Level Info
-    Write-Log "Log file location: $script:TranscriptPath" -Level Info
-    Write-Log "" -Level Info
-
-    # Show instructions
-    Write-Log "═══════════════════════════════════════════════════════════" -Level Info
-    Write-Log "  HOW TO CHECK DEPLOYMENT STATUS LATER:" -Level Info
-    Write-Log "═══════════════════════════════════════════════════════════" -Level Info
-    Write-Log "" -Level Info
-    Write-Log "  You can check deployment status anytime by running:" -Level Info
-    Write-Log "  Get-ItemProperty 'HKLM:\SOFTWARE\DenkoICT\Deployment\Steps\*'" -Level Info
-    Write-Log "" -Level Info
-    Write-Log "  Or import the custom functions and use:" -Level Info
-    Write-Log "  . .\ps_Custom-Functions.ps1" -Level Info
-    Write-Log "  Show-DeploymentSummary" -Level Info
-    Write-Log "" -Level Info
-    Write-Log "═══════════════════════════════════════════════════════════" -Level Info
-    Write-Log "" -Level Info
-
-    # Collect external logs
-    Copy-ExternalLogs -LogDirectory $script:LogDirectory
-
+    Start-Deployment
+    
     Write-Host "`nPress any key to exit..." -ForegroundColor Cyan
     $null = [System.Console]::ReadKey($true)
-
     exit 0
-
+    
 } catch {
-    Write-Host "`n[CRITICAL ERROR] Deployment failed: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "This error prevented the deployment from starting or completing." -ForegroundColor Red
-
-    if ($_.ScriptStackTrace) {
-        Write-Host "`nStack trace:" -ForegroundColor Yellow
-        Write-Host $_.ScriptStackTrace -ForegroundColor Gray
-    }
-
-    Write-Host "`nPress any key to exit..." -ForegroundColor Cyan
+    Write-Host "`n[CRITICAL ERROR] $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "`nPress any key to exit..." -ForegroundColor Red
     $null = [System.Console]::ReadKey($true)
     exit 1
-
 } finally {
-    # Always stop logging
     Stop-DeploymentLogging
 }

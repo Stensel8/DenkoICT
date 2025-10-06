@@ -387,6 +387,7 @@ These repositories and users shaped large parts of the automation logic:
 - [https://github.com/REALSDEALS/pcHealth](https://github.com/REALSDEALS/pcHealth)
 - [https://github.com/REALSDEALS/pcHealthPlus-VS](https://github.com/REALSDEALS/pcHealthPlus-VS)
 - [https://github.com/REALSDEALS/pcHealthPlus](https://github.com/REALSDEALS/pcHealthPlus)
+- [https://github.com/Raphire/Win11Debloat/tree/master](https://github.com/Raphire/Win11Debloat/tree/master)
 
 ### Microsoft ecosystem partners
 - [https://learn.robopack.com/home](https://learn.robopack.com/home)
