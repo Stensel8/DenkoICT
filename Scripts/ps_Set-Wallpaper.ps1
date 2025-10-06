@@ -104,15 +104,24 @@ try {
 
     # Define the Windows API code for setting wallpaper
     $wallpaperCode = @'
+using System;
 using System.Runtime.InteropServices;
+using System.ComponentModel;
 public class Wallpaper {
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
-    
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+
     // Constants for SystemParametersInfo
-    public const int SPI_SETDESKWALLPAPER = 20;
-    public const int SPIF_UPDATEINIFILE = 0x01;
-    public const int SPIF_SENDWININICHANGE = 0x02;
+    private const int SPI_SETDESKWALLPAPER = 20;
+    private const int SPIF_UPDATEINIFILE = 0x01;
+    private const int SPIF_SENDWININICHANGE = 0x02;
+
+    public static void SetWallpaper(string path) {
+        bool result = SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE);
+        if (!result) {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+    }
 }
 '@
 
@@ -123,18 +132,11 @@ public class Wallpaper {
     Write-Log -Message "Setting wallpaper to: $WallpaperPath" -Level Info
 
     if ($PSCmdlet.ShouldProcess($WallpaperPath, 'Set desktop wallpaper')) {
-        # Parameters: SPI_SETDESKWALLPAPER (20), 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE (3)
-        $result = [Wallpaper]::SystemParametersInfo(20, 0, $WallpaperPath, 3)
-        
-        # Capture error immediately after P/Invoke call to ensure reliability
-        $lastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-
-        if ($result) {
+        try {
+            [Wallpaper]::SetWallpaper($WallpaperPath)
             Write-Log -Message ("Wallpaper successfully set to: {0}" -f $WallpaperPath) -Level Success
-        } else {
-            # Use Win32Exception for robust error reporting with descriptive message
-            $win32Exception = [System.ComponentModel.Win32Exception]::new($lastError)
-            throw "Failed to set wallpaper. Win32 error code: $lastError - $($win32Exception.Message)"
+        } catch [System.ComponentModel.Win32Exception] {
+            throw "Failed to set wallpaper. Win32 error: $($_.Exception.Message) (Code: $($_.Exception.NativeErrorCode))"
         }
     } else {
         Write-Log -Message 'WhatIf: Skipping wallpaper update.' -Level Verbose
