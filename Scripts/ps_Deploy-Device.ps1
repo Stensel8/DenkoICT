@@ -166,7 +166,16 @@ function Install-PowerShell7 {
     # Method 3: Install script from PowerShell Gallery
     Write-Host "[PS7] Trying PowerShell Gallery install script..." -ForegroundColor Cyan
     try {
-        Invoke-Expression "& { $(Invoke-RestMethod 'https://aka.ms/install-powershell.ps1') } -UseMSI -Quiet"
+        # Download the script to a temporary file instead of using Invoke-Expression
+        $installScriptPath = Join-Path $env:TEMP "install-powershell.ps1"
+        Invoke-RestMethod 'https://aka.ms/install-powershell.ps1' -OutFile $installScriptPath
+        
+        # Execute the downloaded script file
+        & $installScriptPath -UseMSI -Quiet
+        
+        # Clean up the temporary script
+        Remove-Item -Path $installScriptPath -Force -ErrorAction SilentlyContinue
+        
         Write-Host "[PS7] Installation script completed" -ForegroundColor Green
         return $true
     } catch {
