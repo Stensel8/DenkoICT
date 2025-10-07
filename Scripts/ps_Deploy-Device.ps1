@@ -79,8 +79,7 @@ function Initialize-Directories {
 }
 
 function Start-DeploymentLogging {
-    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $script:TranscriptPath = Join-Path $script:LogDirectory "ps_Deploy-Device_$timestamp.log"
+    $script:TranscriptPath = Join-Path $script:LogDirectory "ps_Deploy-Device.ps1.log"
     
     try {
         Start-Transcript -Path $script:TranscriptPath -Force | Out-Null
@@ -185,12 +184,16 @@ function Save-DeploymentScript {
 # ============================================================================
 
 function Test-WinGetAvailable {
+    param([switch]$Silent)
+    
     try {
         $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
         if ($wingetPath) {
             $version = winget --version 2>&1
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "[WINGET] Available - Version: $version" -ForegroundColor Green
+                if (-not $Silent) {
+                    Write-Host "[WINGET] Available - Version: $version" -ForegroundColor Green
+                }
                 return $true
             }
         }
@@ -216,7 +219,7 @@ function Install-WinGet {
     if ($result.ExitCode -eq 0) {
         # Refresh PATH
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
-        return Test-WinGetAvailable
+        return Test-WinGetAvailable -Silent
     }
     return $false
 }
@@ -257,7 +260,7 @@ function Install-PowerShell7ViaWinGet {
     Write-Host "  INSTALLING POWERSHELL 7" -ForegroundColor Cyan
     Write-Host "========================================`n" -ForegroundColor Cyan
     
-    if (!(Test-WinGetAvailable)) {
+    if (!(Test-WinGetAvailable -Silent)) {
         Write-Host "[PS7] Cannot install - WinGet not available" -ForegroundColor Red
         return $false
     }
@@ -284,31 +287,134 @@ function Install-PowerShell7ViaWinGet {
 # RMM AGENT FUNCTIONS
 # ============================================================================
 
-function Find-AndInstallRMMAgent {
-    Write-Host "`n========================================" -ForegroundColor Cyan
-    Write-Host "  SEARCHING FOR RMM AGENT" -ForegroundColor Cyan
-    Write-Host "========================================`n" -ForegroundColor Cyan
+function Test-RMMAgentInstalled {
+    <#
+    .SYNOPSIS
+        Checks if the RMM agent (Datto RMM / CentraStage) is installed.
+    .DESCRIPTION
+        Checks for the CagService.exe file and/or the service running.
+    #>
     
-    # First check C:\DenkoICT for agent
-    $agentPath = Join-Path 'C:\DenkoICT' 'RMM-Agent.exe'
-    if (Test-Path $agentPath) {
-        Write-Host "[RMM] Agent found at: $agentPath" -ForegroundColor Green
-        Write-Host "[RMM] Installing agent..." -ForegroundColor Cyan
-        
-        try {
-            $result = Start-Process $agentPath -ArgumentList "/S", "/v/qn" -Wait -PassThru
-            if ($result.ExitCode -eq 0) {
-                Write-Host "[RMM] Agent installed successfully" -ForegroundColor Green
-                return $true
-            } else {
-                Write-Host "[RMM] Agent installation failed (exit code: $($result.ExitCode))" -ForegroundColor Yellow
+    $agentExePath = "C:\Program Files (x86)\CentraStage\CagService.exe"
+    $fileExists = Test-Path $agentExePath
+    
+    $serviceExists = $false
+    try {
+        $service = Get-Service -Name "CagService" -ErrorAction SilentlyContinue
+        if ($service) {
+            $serviceExists = $true
+        } else {
+            # Try alternative service name
+            $service = Get-Service | Where-Object { $_.DisplayName -like "*Datto RMM*" }
+            if ($service) {
+                $serviceExists = $true
             }
-        } catch {
-            Write-Host "[RMM] Agent installation error: $_" -ForegroundColor Yellow
+        }
+    } catch {
+        # Service not found
+    }
+    
+    if ($fileExists -and $serviceExists) {
+        Write-Host "[RMM] Agent verified: Service running and files present" -ForegroundColor Green
+        return $true
+    } elseif ($fileExists) {
+        Write-Host "[RMM] Agent files present but service not detected" -ForegroundColor Yellow
+        return $true
+    } elseif ($serviceExists) {
+        Write-Host "[RMM] Agent service detected" -ForegroundColor Green
+        return $true
+    }
+    
+    return $false
+}
+
+function Wait-ForRMMAgentInstallation {
+    <#
+    .SYNOPSIS
+        Waits up to 30 seconds for the RMM agent to be installed.
+    .DESCRIPTION
+        Checks every second for the agent files or service to appear.
+    #>
+    param(
+        [int]$MaxWaitSeconds = 30
+    )
+    
+    Write-Host "[RMM] Waiting for agent installation to complete (max $MaxWaitSeconds seconds)..." -ForegroundColor Cyan
+    
+    for ($i = 1; $i -le $MaxWaitSeconds; $i++) {
+        if (Test-RMMAgentInstalled) {
+            Write-Host "[RMM] Agent installation confirmed after $i seconds" -ForegroundColor Green
+            return $true
+        }
+        
+        if ($i -lt $MaxWaitSeconds) {
+            Write-Host "  Checking... ($i/$MaxWaitSeconds)" -ForegroundColor Gray
+            Start-Sleep -Seconds 1
         }
     }
     
-    # Search for agent installers
+    Write-Host "[RMM] Agent installation verification failed after $MaxWaitSeconds seconds" -ForegroundColor Red
+    return $false
+}
+
+function Find-AndPrepareRMMAgent {
+    <#
+    .SYNOPSIS
+        Finds RMM agent and moves/renames it to Agent.exe in Download folder.
+    .DESCRIPTION
+        Searches for agent files and ensures they are properly named and located.
+    #>
+    
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  PREPARING RMM AGENT" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    $targetAgentPath = Join-Path $script:DownloadDirectory 'Agent.exe'
+    
+    # Check if Agent.exe already exists in Download folder
+    if (Test-Path $targetAgentPath) {
+        Write-Host "[RMM] Agent.exe already present in Download folder" -ForegroundColor Green
+        return $targetAgentPath
+    }
+    
+    # Search for RMM-Agent.exe in C:\DenkoICT root
+    $oldAgentPath = Join-Path 'C:\DenkoICT' 'RMM-Agent.exe'
+    if (Test-Path $oldAgentPath) {
+        Write-Host "[RMM] Found RMM-Agent.exe, moving to Download folder as Agent.exe..." -ForegroundColor Cyan
+        try {
+            Move-Item -Path $oldAgentPath -Destination $targetAgentPath -Force
+            Write-Host "[RMM] Agent moved successfully" -ForegroundColor Green
+            
+            # Consolidate logs to Logs folder
+            $agentInfoPath = Join-Path 'C:\DenkoICT' 'agent-info.txt'
+            $agentCopyLogPath = Join-Path 'C:\DenkoICT' 'agent-copy.log'
+            
+            # Merge agent-info.txt and agent-copy.log into a single consolidated log
+            $consolidatedLogPath = Join-Path $script:LogDirectory 'agent-deployment.log'
+            
+            if (Test-Path $agentInfoPath) {
+                Add-Content -Path $consolidatedLogPath -Value "`n=== Agent Information ===" -Force
+                Get-Content $agentInfoPath | Add-Content -Path $consolidatedLogPath -Force
+                Remove-Item $agentInfoPath -Force -ErrorAction SilentlyContinue
+            }
+            
+            if (Test-Path $agentCopyLogPath) {
+                Add-Content -Path $consolidatedLogPath -Value "`n=== Agent Copy Log ===" -Force
+                Get-Content $agentCopyLogPath | Add-Content -Path $consolidatedLogPath -Force
+                Remove-Item $agentCopyLogPath -Force -ErrorAction SilentlyContinue
+            }
+            
+            if (Test-Path $consolidatedLogPath) {
+                Write-Host "[RMM] Agent logs consolidated to: $consolidatedLogPath" -ForegroundColor Green
+            }
+            
+            return $targetAgentPath
+        } catch {
+            Write-Host "[RMM] Failed to move agent: $_" -ForegroundColor Red
+        }
+    }
+    
+    # Search other locations for agent files
     $searchPaths = @('C:\DenkoICT', 'D:\', 'E:\', 'F:\', 'G:\', 'H:\')
     foreach ($path in $searchPaths) {
         if (!(Test-Path $path)) { continue }
@@ -316,32 +422,69 @@ function Find-AndInstallRMMAgent {
         $agents = Get-ChildItem -Path $path -Filter "*Agent*.exe" -File -ErrorAction SilentlyContinue
         if ($agents) {
             $agent = $agents | Select-Object -First 1
-            Write-Host "[RMM] Agent executable found: $($agent.FullName)" -ForegroundColor Green
-            Write-Host "[RMM] Now installing agent..." -ForegroundColor Cyan
+            Write-Host "[RMM] Agent found: $($agent.FullName)" -ForegroundColor Green
+            Write-Host "[RMM] Moving to Download folder as Agent.exe..." -ForegroundColor Cyan
             
             try {
-                $result = Start-Process $agent.FullName -ArgumentList "/S", "/v/qn" -Wait -PassThru
-                if ($result.ExitCode -eq 0) {
-                    Write-Host "[RMM] Agent installed successfully" -ForegroundColor Green
-                    return $true
-                }
+                Copy-Item -Path $agent.FullName -Destination $targetAgentPath -Force
+                Write-Host "[RMM] Agent copied successfully" -ForegroundColor Green
+                return $targetAgentPath
             } catch {
-                Write-Host "[RMM] Installation error: $_" -ForegroundColor Yellow
+                Write-Host "[RMM] Failed to copy agent: $_" -ForegroundColor Red
             }
         }
     }
     
-    # Fallback: search for PS1 scripts
-    Write-Host "[RMM] No agent executable found, searching for installation scripts..." -ForegroundColor Yellow
-    $rmmScript = Join-Path $script:DownloadDirectory "ps_Install-RMM.ps1"
-    if (Test-Path $rmmScript) {
-        Write-Host "[RMM] Running ps_Install-RMM.ps1..." -ForegroundColor Cyan
-        & $rmmScript
+    Write-Host "[RMM] No RMM agent found" -ForegroundColor Yellow
+    return $null
+}
+
+function Install-RMMAgent {
+    <#
+    .SYNOPSIS
+        Installs the RMM agent and verifies installation.
+    #>
+    
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  INSTALLING RMM AGENT" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    # Check if already installed
+    if (Test-RMMAgentInstalled) {
+        Write-Host "[RMM] Agent is already installed" -ForegroundColor Green
         return $true
     }
     
-    Write-Host "[RMM] No RMM agent or installation script found" -ForegroundColor Yellow
-    return $false
+    # Prepare the agent
+    $agentPath = Find-AndPrepareRMMAgent
+    
+    if (!$agentPath -or !(Test-Path $agentPath)) {
+        Write-Host "[RMM] Cannot install - Agent.exe not found" -ForegroundColor Yellow
+        return $false
+    }
+    
+    Write-Host "[RMM] Starting agent installation..." -ForegroundColor Cyan
+    Write-Host "[RMM] Executing: $agentPath" -ForegroundColor Gray
+    
+    try {
+        # Start the agent installer without waiting for it to complete
+        # The agent doesn't return proper exit codes, so we don't use -Wait
+        $process = Start-Process -FilePath $agentPath -ArgumentList "/S", "/v/qn" -PassThru -NoNewWindow
+        
+        # Wait for the agent to be installed (check for files/service)
+        $installed = Wait-ForRMMAgentInstallation -MaxWaitSeconds 30
+        
+        if ($installed) {
+            Write-Host "[RMM] Agent installation successful" -ForegroundColor Green
+            return $true
+        } else {
+            Write-Host "[RMM] Agent installation failed or timed out" -ForegroundColor Red
+            return $false
+        }
+    } catch {
+        Write-Host "[RMM] Agent installation error: $_" -ForegroundColor Red
+        return $false
+    }
 }
 
 # ============================================================================
@@ -359,7 +502,6 @@ function Start-Deployment {
         'ps_Install-Winget.ps1',
         'ps_Install-Drivers.ps1', 
         'ps_Install-Applications.ps1',
-        'ps_Install-RMM.ps1',
         'ps_Set-Wallpaper.ps1',
         'ps_Remove-Bloat.ps1',
         'ps_Install-WindowsUpdates.ps1'
@@ -383,9 +525,11 @@ function Start-Deployment {
     }
     
     # Step 1: Ensure WinGet is installed
-    if (!(Test-WinGetAvailable)) {
+    $wingetAvailable = Test-WinGetAvailable
+    if (!$wingetAvailable) {
         if (Install-WinGet) {
             Write-Host "[WINGET] Installation successful" -ForegroundColor Green
+            $wingetAvailable = $true
         } else {
             Write-Host "[WINGET] Installation failed - continuing without WinGet" -ForegroundColor Yellow
         }
@@ -394,13 +538,13 @@ function Start-Deployment {
     # Step 2: Install PowerShell 7 if needed
     $hasPS7 = Test-PowerShell7
     if (!$hasPS7 -and !$SkipPS7Restart) {
-        if (Test-WinGetAvailable) {
+        if ($wingetAvailable) {
             $hasPS7 = Install-PowerShell7ViaWinGet
         }
     }
     
     # Step 3: Install RMM Agent
-    Find-AndInstallRMMAgent
+    Install-RMMAgent
     
     # Step 4: Define and execute deployment steps
     $steps = @(

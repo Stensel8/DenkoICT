@@ -579,7 +579,7 @@ $htmlAccentColor = '#0078D4';
 # RMM Agent Setup:
 # - Place any RMM agent installer on the USB root (filename must contain 'Agent')
 # - Example: DattoRMMAgent.exe, RMM-Agent-Installer.exe, Agent.exe
-# - The installer was already copied to C:\DenkoICT\RMM-Agent.exe during setup
+# - The installer will be copied to C:\DenkoICT\Download\Agent.exe during setup
 # - The deployment script will execute it after hostname change and reboot
 # ============================================================
 
@@ -597,13 +597,18 @@ $scripts = @(
 	};
 	{
 		# Enhanced RMM Agent Detection and Copy (PowerShell 2.0 Compatible)
-		$destDir = 'C:\DenkoICT';
+		$destDir = 'C:\DenkoICT\Download';
 		if (!(Test-Path $destDir)) { 
 			New-Item -Path $destDir -ItemType Directory -Force | Out-Null;
 		};
 		
-		# Log file for debugging
-		$logFile = "$destDir\agent-copy.log";
+		$logDir = 'C:\DenkoICT\Logs';
+		if (!(Test-Path $logDir)) { 
+			New-Item -Path $logDir -ItemType Directory -Force | Out-Null;
+		};
+		
+		# Log file for debugging (consolidated logs go to Logs folder)
+		$logFile = "$logDir\agent-deployment.log";
 		
 		# Function to log messages (PS2 compatible)
 		function Write-AgentLog {
@@ -667,7 +672,7 @@ $scripts = @(
 			if ($agentFiles -and $agentFiles.Count -gt 0) {
 				# Take the first found agent
 				$agentFile = $agentFiles | Select-Object -First 1;
-				$targetPath = "$destDir\RMM-Agent.exe";
+				$targetPath = "$destDir\Agent.exe";
 				
 				Write-AgentLog "Found agent: $($agentFile.FullName)";
 				Write-AgentLog "Size: $($agentFile.Length) bytes";
@@ -684,9 +689,12 @@ $scripts = @(
 							Write-Host "[RMM] Agent copied from $($agentFile.FullName) to $targetPath" -ForegroundColor Green;
 							$agentFound = $true;
 							
-							# Create a marker file for deployment script (PS2 compatible)
-							$infoContent = "SourcePath=$($agentFile.FullName)`r`nSourceName=$($agentFile.Name)`r`nCopyTime=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`r`nSize=$($agentFile.Length)";
-							Set-Content -Path "$destDir\agent-info.txt" -Value $infoContent;
+							# Log agent information directly to the log file
+							Write-AgentLog "=== Agent Information ===";
+							Write-AgentLog "SourcePath=$($agentFile.FullName)";
+							Write-AgentLog "SourceName=$($agentFile.Name)";
+							Write-AgentLog "CopyTime=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')";
+							Write-AgentLog "Size=$($agentFile.Length)";
 							
 							break;
 						} else {
