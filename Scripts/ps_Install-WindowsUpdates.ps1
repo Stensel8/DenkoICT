@@ -245,7 +245,9 @@ try {
         
         # Display update list
         $totalSizeMB = 0
-        foreach ($update in $updates[0..([Math]::Min($updates.Count, $MaxUpdates) - 1)]) {
+        $displayCount = [Math]::Min($updates.Count, $MaxUpdates)
+        for ($i = 0; $i -lt $displayCount; $i++) {
+            $update = $updates[$i]
             $sizeMB = [Math]::Round($update.Size / 1MB, 2)
             $totalSizeMB += $sizeMB
             Write-Log "  • $($update.Title) [$sizeMB MB]" -Level Info
