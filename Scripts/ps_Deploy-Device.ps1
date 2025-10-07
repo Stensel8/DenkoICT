@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 2.0.0
+.VERSION 2.1.0
 
 .AUTHOR Sten Tijhuis
 
@@ -19,6 +19,7 @@
 [Version 1.2.2] - Enforces C:\DenkoICT\Download for all downloads.
 [Version 1.3.0] - Improved execution order, network stability checks with retries, better handling for network-dependent operations
 [Version 2.0.0] - Major refactor: Simplified orchestration, removed inline functions, better error handling, cleaner network retry logic
+[Version 2.1.0] - Resolved conflicts, improved PS7 switching, better error handling
 #>
 
 #requires -Version 5.1
@@ -54,7 +55,7 @@ param (
     [string]$ScriptBaseUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts",
     [int]$NetworkRetryCount = 5,
     [int]$NetworkRetryDelaySeconds = 10,
-    [switch]$SkipPS7Restart  # Internal parameter to prevent restart loops
+    [switch]$SkipPS7Restart
 )
 
 Set-StrictMode -Version Latest
@@ -66,14 +67,38 @@ $script:DownloadDirectory = 'C:\DenkoICT\Download'
 $script:TranscriptPath = $null
 
 # ============================================================================
-# NETWORK FUNCTIONS
+# BASIC FUNCTIONS
 # ============================================================================
 
+function Initialize-Directories {
+    @($script:LogDirectory, $script:DownloadDirectory) | ForEach-Object {
+        if (!(Test-Path $_)) {
+            New-Item -Path $_ -ItemType Directory -Force | Out-Null
+        }
+    }
+}
+
+function Start-DeploymentLogging {
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $script:TranscriptPath = Join-Path $script:LogDirectory "ps_Deploy-Device_$timestamp.log"
+    
+    try {
+        Start-Transcript -Path $script:TranscriptPath -Force | Out-Null
+        Write-Host "[INFO] Logging to: $script:TranscriptPath" -ForegroundColor Cyan
+    } catch {
+        Write-Warning "Failed to start transcript: $_"
+    }
+}
+
+function Stop-DeploymentLogging {
+    try {
+        Stop-Transcript | Out-Null
+    } catch {
+        # Silently ignore
+    }
+}
+
 function Test-NetworkConnection {
-    <#
-    .SYNOPSIS
-        Tests network connectivity with retry logic.
-    #>
     param(
         [string]$TestUrl = "https://github.com",
         [int]$MaxRetries = $NetworkRetryCount,
@@ -98,197 +123,6 @@ function Test-NetworkConnection {
         }
     }
     return $false
-}
-
-# ============================================================================
-# POWERSHELL 7 DETECTION AND INSTALLATION
-# ============================================================================
-
-function Test-PowerShell7 {
-    <#
-    .SYNOPSIS
-        Checks if PowerShell 7 is installed and available.
-    #>
-    
-    # Check if we're already running in PowerShell 7+
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        Write-Host "[PS7] Already running in PowerShell $($PSVersionTable.PSVersion)" -ForegroundColor Green
-        return $true
-    }
-    
-    # Check if pwsh.exe exists
-    $pwshPath = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-    if ($pwshPath) {
-        Write-Host "[PS7] PowerShell 7 found at: $($pwshPath.Source)" -ForegroundColor Green
-        return $true
-    }
-    
-    # Check common installation paths
-    $commonPaths = @(
-        "$env:ProgramFiles\PowerShell\7\pwsh.exe",
-        "$env:ProgramFiles\PowerShell\7-preview\pwsh.exe",
-        "${env:ProgramFiles(x86)}\PowerShell\7\pwsh.exe"
-    )
-    
-    foreach ($path in $commonPaths) {
-        if (Test-Path $path) {
-            Write-Host "[PS7] PowerShell 7 found at: $path" -ForegroundColor Green
-            return $true
-        }
-    }
-    
-    Write-Host "[PS7] PowerShell 7 not found" -ForegroundColor Yellow
-    return $false
-}
-
-function Install-PowerShell7 {
-    <#
-    .SYNOPSIS
-        Installs PowerShell 7 using various methods.
-    #>
-    
-    Write-Host "`n========================================" -ForegroundColor Cyan
-    Write-Host "  INSTALLING POWERSHELL 7" -ForegroundColor Cyan
-    Write-Host "========================================`n" -ForegroundColor Cyan
-    
-    # Ensure network connectivity
-    if (!(Test-NetworkConnection)) {
-        Write-Host "[PS7] Cannot install - no network connectivity" -ForegroundColor Red
-        return $false
-    }
-    
-    # Method 1: Try WinGet first (if available)
-    $winget = Get-Command winget -ErrorAction SilentlyContinue
-    if ($winget) {
-        Write-Host "[PS7] Installing via WinGet..." -ForegroundColor Cyan
-        try {
-            $result = Start-Process -FilePath "winget" -ArgumentList "install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements" -Wait -PassThru
-            if ($result.ExitCode -eq 0) {
-                Write-Host "[PS7] Successfully installed via WinGet" -ForegroundColor Green
-                # Give Windows a moment to register the new installation
-                Start-Sleep -Seconds 3
-                return $true
-            }
-        } catch {
-            Write-Host "[PS7] WinGet installation failed: $_" -ForegroundColor Yellow
-        }
-    }
-    
-    # Method 2: Direct MSI download
-    Write-Host "[PS7] Downloading PowerShell 7 MSI installer..." -ForegroundColor Cyan
-    $msiUrl = "https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7-win-x64.msi"
-    $msiPath = Join-Path $script:DownloadDirectory "PowerShell-7.msi"
-    
-    try {
-        # Ensure download directory exists
-        if (!(Test-Path $script:DownloadDirectory)) {
-            New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
-        }
-        
-        # Download MSI with retries
-        $downloaded = $false
-        for ($retry = 1; $retry -le 3; $retry++) {
-            try {
-                Write-Host "[PS7] Download attempt $retry/3..." -ForegroundColor Cyan
-                $webClient = New-Object System.Net.WebClient
-                $webClient.DownloadFile($msiUrl, $msiPath)
-                if ((Test-Path $msiPath) -and ((Get-Item $msiPath).Length -gt 1MB)) {
-                    $downloaded = $true
-                    break
-                }
-            } catch {
-                if ($retry -eq 3) {
-                    throw
-                }
-                Start-Sleep -Seconds 5
-            }
-        }
-        
-        if ($downloaded -and (Test-Path $msiPath)) {
-            Write-Host "[PS7] Installing from MSI..." -ForegroundColor Cyan
-            $msiArguments = "/i `"$msiPath`" /quiet ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ADD_FILE_CONTEXT_MENU_RUNPOWERSHELL=1 ENABLE_PSREMOTING=0 REGISTER_MANIFEST=1"
-            $result = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArguments -Wait -PassThru
-            
-            if ($result.ExitCode -eq 0) {
-                Write-Host "[PS7] Successfully installed from MSI" -ForegroundColor Green
-                
-                # Update PATH immediately
-                $pwshPath = "$env:ProgramFiles\PowerShell\7"
-                $env:PATH = "$pwshPath;$env:PATH"
-                
-                # Give Windows a moment to register the new installation
-                Start-Sleep -Seconds 3
-                return $true
-            } else {
-                Write-Host "[PS7] MSI installation failed with code: $($result.ExitCode)" -ForegroundColor Red
-            }
-        }
-    } catch {
-        Write-Host "[PS7] Failed to download/install MSI: $_" -ForegroundColor Red
-    }
-    
-    return $false
-}
-
-function Get-PowerShell7Path {
-    <#
-    .SYNOPSIS
-        Gets the path to pwsh.exe.
-    #>
-    
-    # Check if pwsh is in PATH
-    $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-    if ($pwsh) {
-        return $pwsh.Source
-    }
-    
-    # Check common locations
-    $paths = @(
-        "$env:ProgramFiles\PowerShell\7\pwsh.exe",
-        "$env:ProgramFiles\PowerShell\7-preview\pwsh.exe",
-        "${env:ProgramFiles(x86)}\PowerShell\7\pwsh.exe"
-    )
-    
-    foreach ($path in $paths) {
-        if (Test-Path $path) {
-            return $path
-        }
-    }
-    
-    return $null
-}
-
-# ============================================================================
-# BASIC FUNCTIONS
-# ============================================================================
-
-function Initialize-Directories {
-    if (!(Test-Path $script:LogDirectory)) {
-        New-Item -Path $script:LogDirectory -ItemType Directory -Force | Out-Null
-    }
-    if (!(Test-Path $script:DownloadDirectory)) {
-        New-Item -Path $script:DownloadDirectory -ItemType Directory -Force | Out-Null
-    }
-}
-
-function Start-DeploymentLogging {
-    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $script:TranscriptPath = Join-Path $script:LogDirectory "ps_Deploy-Device_$timestamp.log"
-    
-    try {
-        Start-Transcript -Path $script:TranscriptPath -Force | Out-Null
-        Write-Host "[INFO] Logging to: $script:TranscriptPath" -ForegroundColor Cyan
-    } catch {
-        Write-Warning "Failed to start transcript: $_"
-    }
-}
-
-function Stop-DeploymentLogging {
-    try {
-        Stop-Transcript | Out-Null
-    } catch {
-        # Silently ignore
-    }
 }
 
 function Get-ScriptFromGitHub {
@@ -323,59 +157,198 @@ function Get-ScriptFromGitHub {
     return $false
 }
 
-function Invoke-DeploymentScript {
-    param(
-        [string]$ScriptPath,
-        [string]$DisplayName,
-        [switch]$UsePS7
-    )
-
-    Write-Host "`n[RUNNING] $DisplayName" -ForegroundColor Yellow
-
-    # Determine how to run the script
-    if ($UsePS7) {
-        $pwshPath = Get-PowerShell7Path
-        if ($pwshPath) {
-            Write-Host "  → Executing with PowerShell 7" -ForegroundColor Cyan
-            # Use -NoLogo to reduce output, ensure clean module state with fresh session
-            $result = Start-Process -FilePath $pwshPath -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$ScriptPath`"" -Wait -PassThru
-        } else {
-            Write-Host "  → PS7 not available, using Windows PowerShell" -ForegroundColor Yellow
-            $result = Start-Process -FilePath "powershell.exe" -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$ScriptPath`"" -Wait -PassThru
+function Save-DeploymentScript {
+    $deployScriptPath = Join-Path $script:DownloadDirectory "ps_Deploy-Device.ps1"
+    
+    if ($PSCommandPath -and (Test-Path $PSCommandPath)) {
+        if ($PSCommandPath -ne $deployScriptPath) {
+            Copy-Item -Path $PSCommandPath -Destination $deployScriptPath -Force
+            Write-Host "[INFO] Deployment script saved to: $deployScriptPath" -ForegroundColor Green
         }
-    } else {
-        # Run directly in current session
-        & $ScriptPath
-        $result = [PSCustomObject]@{ ExitCode = $LASTEXITCODE }
+        return $deployScriptPath
     }
+    
+    Write-Host "[INFO] Downloading deployment script from GitHub..." -ForegroundColor Cyan
+    $downloaded = Get-ScriptFromGitHub -ScriptName "ps_Deploy-Device.ps1"
+    
+    if ($downloaded -and (Test-Path $deployScriptPath)) {
+        Write-Host "[INFO] Deployment script saved to: $deployScriptPath" -ForegroundColor Green
+        return $deployScriptPath
+    }
+    
+    Write-Host "[ERROR] Failed to save deployment script to disk" -ForegroundColor Red
+    return $null
+}
 
-    if ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode) {
-        Write-Host "  ✓ Completed: $DisplayName" -ForegroundColor Green
+# ============================================================================
+# WINGET FUNCTIONS
+# ============================================================================
+
+function Test-WinGetAvailable {
+    try {
+        $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
+        if ($wingetPath) {
+            $version = winget --version 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "[WINGET] Available - Version: $version" -ForegroundColor Green
+                return $true
+            }
+        }
+        return $false
+    } catch {
+        return $false
+    }
+}
+
+function Install-WinGet {
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  INSTALLING WINGET" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    $wingetScript = Join-Path $script:DownloadDirectory "ps_Install-Winget.ps1"
+    if (!(Test-Path $wingetScript)) {
+        Write-Host "[ERROR] ps_Install-Winget.ps1 not found" -ForegroundColor Red
+        return $false
+    }
+    
+    $result = Start-Process powershell.exe -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$wingetScript`"" -Wait -PassThru
+    
+    if ($result.ExitCode -eq 0) {
+        # Refresh PATH
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+        return Test-WinGetAvailable
+    }
+    return $false
+}
+
+# ============================================================================
+# POWERSHELL 7 FUNCTIONS
+# ============================================================================
+
+function Test-PowerShell7 {
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        Write-Host "[PS7] Already running in PowerShell $($PSVersionTable.PSVersion)" -ForegroundColor Green
         return $true
-    } elseif ($result.ExitCode -eq 3010) {
-        Write-Host "  ✓ Completed: $DisplayName (reboot required)" -ForegroundColor Green
+    }
+    
+    $pwshPath = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($pwshPath) {
+        Write-Host "[PS7] Found at: $($pwshPath.Source)" -ForegroundColor Green
         return $true
-    } else {
-        Write-Host "  ✗ Failed: $DisplayName (exit code: $($result.ExitCode))" -ForegroundColor Red
+    }
+    
+    $commonPaths = @(
+        "$env:ProgramFiles\PowerShell\7\pwsh.exe",
+        "$env:ProgramFiles\PowerShell\7-preview\pwsh.exe"
+    )
+    
+    foreach ($path in $commonPaths) {
+        if (Test-Path $path) {
+            Write-Host "[PS7] Found at: $path" -ForegroundColor Green
+            return $true
+        }
+    }
+    
+    return $false
+}
+
+function Install-PowerShell7ViaWinGet {
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  INSTALLING POWERSHELL 7" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    if (!(Test-WinGetAvailable)) {
+        Write-Host "[PS7] Cannot install - WinGet not available" -ForegroundColor Red
+        return $false
+    }
+    
+    try {
+        Write-Host "[PS7] Installing via WinGet..." -ForegroundColor Cyan
+        $result = Start-Process winget -ArgumentList "install", "--id", "Microsoft.PowerShell", "--silent", "--accept-package-agreements", "--accept-source-agreements" -Wait -PassThru -NoNewWindow
+        
+        if ($result.ExitCode -in @(0, -1978335189, -1978335135)) {
+            Write-Host "[PS7] Installation successful" -ForegroundColor Green
+            Start-Sleep -Seconds 3
+            return Test-PowerShell7
+        } else {
+            Write-Host "[PS7] Installation failed (exit code: $($result.ExitCode))" -ForegroundColor Red
+            return $false
+        }
+    } catch {
+        Write-Host "[PS7] Installation error: $_" -ForegroundColor Red
         return $false
     }
 }
 
 # ============================================================================
-# MAIN ORCHESTRATION
+# RMM AGENT FUNCTIONS
+# ============================================================================
+
+function Find-AndInstallRMMAgent {
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "  SEARCHING FOR RMM AGENT" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    # First check C:\DenkoICT for agent
+    $agentPath = Join-Path 'C:\DenkoICT' 'RMM-Agent.exe'
+    if (Test-Path $agentPath) {
+        Write-Host "[RMM] Agent found at: $agentPath" -ForegroundColor Green
+        Write-Host "[RMM] Installing agent..." -ForegroundColor Cyan
+        
+        try {
+            $result = Start-Process $agentPath -ArgumentList "/S", "/v/qn" -Wait -PassThru
+            if ($result.ExitCode -eq 0) {
+                Write-Host "[RMM] Agent installed successfully" -ForegroundColor Green
+                return $true
+            } else {
+                Write-Host "[RMM] Agent installation failed (exit code: $($result.ExitCode))" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "[RMM] Agent installation error: $_" -ForegroundColor Yellow
+        }
+    }
+    
+    # Search for agent installers
+    $searchPaths = @('C:\DenkoICT', 'D:\', 'E:\', 'F:\', 'G:\', 'H:\')
+    foreach ($path in $searchPaths) {
+        if (!(Test-Path $path)) { continue }
+        
+        $agents = Get-ChildItem -Path $path -Filter "*Agent*.exe" -File -ErrorAction SilentlyContinue
+        if ($agents) {
+            $agent = $agents | Select-Object -First 1
+            Write-Host "[RMM] Agent executable found: $($agent.FullName)" -ForegroundColor Green
+            Write-Host "[RMM] Now installing agent..." -ForegroundColor Cyan
+            
+            try {
+                $result = Start-Process $agent.FullName -ArgumentList "/S", "/v/qn" -Wait -PassThru
+                if ($result.ExitCode -eq 0) {
+                    Write-Host "[RMM] Agent installed successfully" -ForegroundColor Green
+                    return $true
+                }
+            } catch {
+                Write-Host "[RMM] Installation error: $_" -ForegroundColor Yellow
+            }
+        }
+    }
+    
+    # Fallback: search for PS1 scripts
+    Write-Host "[RMM] No agent executable found, searching for installation scripts..." -ForegroundColor Yellow
+    $rmmScript = Join-Path $script:DownloadDirectory "ps_Install-RMM.ps1"
+    if (Test-Path $rmmScript) {
+        Write-Host "[RMM] Running ps_Install-RMM.ps1..." -ForegroundColor Cyan
+        & $rmmScript
+        return $true
+    }
+    
+    Write-Host "[RMM] No RMM agent or installation script found" -ForegroundColor Yellow
+    return $false
+}
+
+# ============================================================================
+# MAIN DEPLOYMENT
 # ============================================================================
 
 function Start-Deployment {
-    # Test network connectivity first
-    Write-Host "`n========================================" -ForegroundColor Cyan
-    Write-Host "  CHECKING NETWORK CONNECTIVITY" -ForegroundColor Cyan
-    Write-Host "========================================`n" -ForegroundColor Cyan
-    
-    $hasNetwork = Test-NetworkConnection
-    if (!$hasNetwork) {
-        Write-Host "`n[WARNING] Limited or no network connectivity - some features may not work" -ForegroundColor Yellow
-    }
-    
     # Download all required scripts first
     Write-Host "`n========================================" -ForegroundColor Cyan
     Write-Host "  DOWNLOADING DEPLOYMENT SCRIPTS" -ForegroundColor Cyan
@@ -386,31 +359,22 @@ function Start-Deployment {
         'ps_Install-Winget.ps1',
         'ps_Install-Drivers.ps1', 
         'ps_Install-Applications.ps1',
+        'ps_Install-RMM.ps1',
         'ps_Set-Wallpaper.ps1',
         'ps_Remove-Bloat.ps1',
         'ps_Install-WindowsUpdates.ps1'
     )
     
+    $hasNetwork = Test-NetworkConnection
+    
     foreach ($script in $scripts) {
         $localPath = Join-Path $script:DownloadDirectory $script
         
-        # Check if already exists locally
         if (Test-Path $localPath) {
             Write-Host "Already exists: $script" -ForegroundColor Gray
             continue
         }
         
-        # Try script directory
-        if ($PSCommandPath) {
-            $scriptDirPath = Join-Path (Split-Path $PSCommandPath -Parent) $script
-            if (Test-Path $scriptDirPath) {
-                Copy-Item $scriptDirPath $localPath
-                Write-Host "Copied from local: $script" -ForegroundColor Green
-                continue
-            }
-        }
-        
-        # Download from GitHub if network is available
         if ($hasNetwork) {
             Get-ScriptFromGitHub -ScriptName $script | Out-Null
         } else {
@@ -418,16 +382,32 @@ function Start-Deployment {
         }
     }
     
-    # Check if PowerShell 7 is available
-    $hasPS7 = Test-PowerShell7
+    # Step 1: Ensure WinGet is installed
+    if (!(Test-WinGetAvailable)) {
+        if (Install-WinGet) {
+            Write-Host "[WINGET] Installation successful" -ForegroundColor Green
+        } else {
+            Write-Host "[WINGET] Installation failed - continuing without WinGet" -ForegroundColor Yellow
+        }
+    }
     
-    # Define deployment steps
+    # Step 2: Install PowerShell 7 if needed
+    $hasPS7 = Test-PowerShell7
+    if (!$hasPS7 -and !$SkipPS7Restart) {
+        if (Test-WinGetAvailable) {
+            $hasPS7 = Install-PowerShell7ViaWinGet
+        }
+    }
+    
+    # Step 3: Install RMM Agent
+    Find-AndInstallRMMAgent
+    
+    # Step 4: Define and execute deployment steps
     $steps = @(
-        @{ Script = 'ps_Install-Winget.ps1'; Name = 'WinGet Installation'; UsePS7 = $false }
-        @{ Script = 'ps_Install-Drivers.ps1'; Name = 'Driver Updates for HP and Dell'; UsePS7 = $true }
+        @{ Script = 'ps_Install-Drivers.ps1'; Name = 'Driver Updates'; UsePS7 = $true }
         @{ Script = 'ps_Install-Applications.ps1'; Name = 'Applications'; UsePS7 = $true }
         @{ Script = 'ps_Remove-Bloat.ps1'; Name = 'Bloatware Removal'; UsePS7 = $true }
-        @{ Script = 'ps_Set-Wallpaper.ps1'; Name = 'Wallpaper Configuration'; UsePS7 = $true }
+        @{ Script = 'ps_Set-Wallpaper.ps1'; Name = 'Wallpaper Configuration'; UsePS7 = $false }
         @{ Script = 'ps_Install-WindowsUpdates.ps1'; Name = 'Windows Updates'; UsePS7 = $true }
     )
     
@@ -446,11 +426,24 @@ function Start-Deployment {
             continue
         }
         
-        $success = Invoke-DeploymentScript -ScriptPath $scriptPath -DisplayName $step.Name -UsePS7:($step.UsePS7 -and $hasPS7)
+        Write-Host "`n[RUNNING] $($step.Name)" -ForegroundColor Yellow
         
-        if ($success) {
+        if ($step.UsePS7 -and $hasPS7) {
+            $pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+            if ($pwshPath) {
+                $result = Start-Process $pwshPath -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"" -Wait -PassThru
+            } else {
+                $result = Start-Process powershell.exe -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"" -Wait -PassThru
+            }
+        } else {
+            $result = Start-Process powershell.exe -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"" -Wait -PassThru
+        }
+        
+        if ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode) {
+            Write-Host "  ✓ Completed: $($step.Name)" -ForegroundColor Green
             $results.Success++
         } else {
+            Write-Host "  ✗ Failed: $($step.Name) (exit code: $($result.ExitCode))" -ForegroundColor Red
             $results.Failed++
         }
     }
@@ -472,7 +465,6 @@ function Start-Deployment {
 # ============================================================================
 
 try {
-    # Initialize
     Initialize-Directories
     Start-DeploymentLogging
     
@@ -481,71 +473,30 @@ try {
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host "PowerShell Version: $($PSVersionTable.PSVersion)" -ForegroundColor Cyan
     Write-Host "Script Path: $PSCommandPath" -ForegroundColor Cyan
-    if ($SkipPS7Restart) {
-        Write-Host "PS7 Restart: Skipped (already restarted)" -ForegroundColor Gray
-    }
     
-    # PowerShell 7 check and installation (only if not already restarted)
+    # Check if we should restart in PS7
     if ($PSVersionTable.PSVersion.Major -lt 7 -and !$SkipPS7Restart) {
-        Write-Host "`nRunning in Windows PowerShell $($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)" -ForegroundColor Yellow
+        # Ensure deployment script is saved
+        $deployScriptPath = Save-DeploymentScript
         
-        if (!(Test-PowerShell7)) {
-            Write-Host "PowerShell 7 is recommended for optimal deployment" -ForegroundColor Yellow
-            Write-Host "Attempting to install PowerShell 7..." -ForegroundColor Cyan
+        if (Test-PowerShell7) {
+            Write-Host "`nPowerShell 7 detected. Restarting deployment in PS7..." -ForegroundColor Cyan
+            Stop-DeploymentLogging
             
-            $install = Install-PowerShell7
-            if ($install -and (Test-PowerShell7)) {
-                Write-Host "`nPowerShell 7 installed successfully!" -ForegroundColor Green
-                
-                # Restart in PS7
-                $pwshPath = Get-PowerShell7Path
-                if ($pwshPath -and (Test-Path $pwshPath)) {
-                    Write-Host "`nRestarting deployment in PowerShell 7..." -ForegroundColor Cyan
-                    Write-Host "This window will remain open until deployment completes." -ForegroundColor Cyan
-                    
-                    # Build arguments including our custom parameters
-                    $arguments = @(
-                        "-NoProfile",
-                        "-ExecutionPolicy", "Bypass",
-                        "-File", "`"$PSCommandPath`"",
-                        "-ScriptBaseUrl", "`"$ScriptBaseUrl`"",
-                        "-NetworkRetryCount", $NetworkRetryCount,
-                        "-NetworkRetryDelaySeconds", $NetworkRetryDelaySeconds,
-                        "-SkipPS7Restart"  # Prevent infinite restart loop
-                    )
-                    
-                    # Start PS7 process and WAIT for it to complete
-                    $ps7Process = Start-Process -FilePath $pwshPath -ArgumentList $arguments -Verb RunAs -Wait -PassThru
-                    
-                    # Exit with the same code as the PS7 process
-                    exit $ps7Process.ExitCode
-                }
-            } else {
-                Write-Host "`nContinuing with Windows PowerShell (some features may be limited)" -ForegroundColor Yellow
-                Write-Host "Note: Some deployment steps may have reduced functionality" -ForegroundColor Yellow
+            $pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+            if (!$pwshPath) {
+                $pwshPath = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
             }
-        } else {
-            # PS7 exists but we're in PS5 - restart in PS7
-            $pwshPath = Get-PowerShell7Path
-            if ($pwshPath -and (Test-Path $pwshPath)) {
-                Write-Host "`nPowerShell 7 detected. Restarting deployment in PS7..." -ForegroundColor Cyan
-                Write-Host "This window will remain open until deployment completes." -ForegroundColor Cyan
-                
-                # Build arguments including our custom parameters
+            
+            if (Test-Path $pwshPath) {
                 $arguments = @(
                     "-NoProfile",
                     "-ExecutionPolicy", "Bypass",
-                    "-File", "`"$PSCommandPath`"",
-                    "-ScriptBaseUrl", "`"$ScriptBaseUrl`"",
-                    "-NetworkRetryCount", $NetworkRetryCount,
-                    "-NetworkRetryDelaySeconds", $NetworkRetryDelaySeconds,
-                    "-SkipPS7Restart"  # Prevent infinite restart loop
+                    "-File", "`"$deployScriptPath`"",
+                    "-SkipPS7Restart"
                 )
                 
-                # Start PS7 process and WAIT for it to complete
                 $ps7Process = Start-Process -FilePath $pwshPath -ArgumentList $arguments -Verb RunAs -Wait -PassThru
-                
-                # Exit with the same code as the PS7 process
                 exit $ps7Process.ExitCode
             }
         }
@@ -554,22 +505,19 @@ try {
     # Run deployment
     $deploymentResults = Start-Deployment
     
-    # Determine exit code based on results
-    $exitCode = 0
-    if ($deploymentResults.Failed -gt 0) {
-        $exitCode = 1
-    }
+    $exitCode = if ($deploymentResults.Failed -gt 0) { 1 } else { 0 }
     
-    # For unattended scenarios, don't wait for key press
-    $isUnattended = $env:USERNAME -eq 'defaultuser0' -or 
-                    $env:USERNAME -eq 'SYSTEM' -or 
-                    [Environment]::UserInteractive -eq $false
+    # Check if unattended
+    $isUnattended = $env:USERNAME -eq 'defaultuser0' -or $env:USERNAME -eq 'SYSTEM' -or [Environment]::UserInteractive -eq $false
     
-    if (!$isUnattended) {
+    if (!$isUnattended -and $deploymentResults.Failed -gt 0) {
+        Write-Host "`n[WARNING] Some deployment steps failed!" -ForegroundColor Yellow
+        Write-Host "Press any key to continue..." -ForegroundColor Yellow
+        $null = [System.Console]::ReadKey($true)
+    } elseif (!$isUnattended) {
         Write-Host "`nPress any key to exit..." -ForegroundColor Cyan
         $null = [System.Console]::ReadKey($true)
     } else {
-        Write-Host "`nRunning in unattended mode - exiting automatically" -ForegroundColor Cyan
         Start-Sleep -Seconds 5
     }
     
@@ -579,15 +527,7 @@ try {
     Write-Host "`n[CRITICAL ERROR] $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "Error details: $($_.ScriptStackTrace)" -ForegroundColor Red
     
-    # Log the full error
-    if ($script:TranscriptPath) {
-        $_ | Out-String | Add-Content -Path $script:TranscriptPath
-    }
-    
-    # For unattended scenarios, don't wait for key press
-    $isUnattended = $env:USERNAME -eq 'defaultuser0' -or 
-                    $env:USERNAME -eq 'SYSTEM' -or 
-                    [Environment]::UserInteractive -eq $false
+    $isUnattended = $env:USERNAME -eq 'defaultuser0' -or $env:USERNAME -eq 'SYSTEM' -or [Environment]::UserInteractive -eq $false
     
     if (!$isUnattended) {
         Write-Host "`nPress any key to exit..." -ForegroundColor Red

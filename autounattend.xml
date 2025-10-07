@@ -570,7 +570,22 @@ $htmlAccentColor = '#0078D4';
 };
 		</File>
 		<File path="C:\Windows\Setup\Scripts\unattend-01.ps1">
+# ============================================================
+# DENKO ICT - First Logon Setup Script
+# ============================================================
+# This script runs during the first user logon after Windows installation.
+# It launches the main deployment script which handles all configuration.
+#
+# RMM Agent Setup:
+# - Place any RMM agent installer on the USB root (filename must contain 'Agent')
+# - Example: DattoRMMAgent.exe, RMM-Agent-Installer.exe, Agent.exe
+# - The installer was already copied to C:\DenkoICT\RMM-Agent.exe during setup
+# - The deployment script will execute it after hostname change and reboot
+# ============================================================
+
 Write-Host "Customizing your device. Please wait..." -ForegroundColor Cyan
+
+# Launch main deployment script
 Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Deploy-Device.ps1' | iex`"" -Wait
 		</File>
 		<File path="C:\Windows\Setup\Scripts\Specialize.ps1">
@@ -579,6 +594,140 @@ $scripts = @(
 		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\GetComputerName.ps1' -Raw | Invoke-Expression &gt; 'C:\Windows\Setup\Scripts\ComputerName.txt';
 		Start-Process -FilePath ( Get-Process -Id $PID ).Path -ArgumentList '-NoProfile', '-Command', 'Get-Content -LiteralPath "C:\Windows\Setup\Scripts\SetComputerName.ps1" -Raw | Invoke-Expression;' -WindowStyle 'Hidden';
 		Start-Sleep -Seconds 10;
+	};
+	{
+		# Enhanced RMM Agent Detection and Copy (PowerShell 2.0 Compatible)
+		$destDir = 'C:\DenkoICT';
+		if (!(Test-Path $destDir)) { 
+			New-Item -Path $destDir -ItemType Directory -Force | Out-Null;
+		};
+		
+		# Log file for debugging
+		$logFile = "$destDir\agent-copy.log";
+		
+		# Function to log messages (PS2 compatible)
+		function Write-AgentLog {
+			param([string]$Message);
+			$timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss';
+			Add-Content -Path $logFile -Value "[$timestamp] $Message";
+		};
+		
+		Write-AgentLog "Starting RMM agent search...";
+		
+		# Get all drive letters (PS2 compatible method)
+		$searchDrives = @();
+		$driveLetters = @('C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K');
+		foreach ($letter in $driveLetters) {
+			$drivePath = "${letter}:\";
+			if (Test-Path $drivePath) {
+				$searchDrives += $drivePath;
+			};
+		};
+		
+		# Remove C:\ as we don't want to search system drive
+		$searchDrives = $searchDrives | Where-Object { $_ -ne 'C:\' };
+		
+		Write-AgentLog "Searching drives: $($searchDrives -join ', ')";
+		
+		$agentFound = $false;
+		
+		foreach ($drive in $searchDrives) {
+			Write-AgentLog "Searching in $drive";
+			
+			# Search for Agent executable files
+			$searchPatterns = @('*Agent*.exe', '*RMM*.exe', '*Datto*.exe', '*N-able*.exe', '*Kaseya*.exe', '*ConnectWise*.exe', '*Ninja*.exe');
+			$agentFiles = @();
+			
+			foreach ($pattern in $searchPatterns) {
+				try {
+					$foundFiles = Get-ChildItem -Path $drive -Filter $pattern -ErrorAction SilentlyContinue;
+					if ($foundFiles) {
+						foreach ($file in $foundFiles) {
+							$agentFiles += $file;
+						};
+					};
+					
+					# Search one level deep
+					$subDirs = Get-ChildItem -Path $drive -Directory -ErrorAction SilentlyContinue;
+					if ($subDirs) {
+						foreach ($subDir in $subDirs) {
+							$foundFiles = Get-ChildItem -Path $subDir.FullName -Filter $pattern -ErrorAction SilentlyContinue;
+							if ($foundFiles) {
+								foreach ($file in $foundFiles) {
+									$agentFiles += $file;
+								};
+							};
+						};
+					};
+				} catch {
+					Write-AgentLog "Error searching $drive with pattern $pattern : $_";
+				};
+			};
+			
+			if ($agentFiles -and $agentFiles.Count -gt 0) {
+				# Take the first found agent
+				$agentFile = $agentFiles | Select-Object -First 1;
+				$targetPath = "$destDir\RMM-Agent.exe";
+				
+				Write-AgentLog "Found agent: $($agentFile.FullName)";
+				Write-AgentLog "Size: $($agentFile.Length) bytes";
+				Write-AgentLog "Copying to: $targetPath";
+				
+				try {
+					Copy-Item -Path $agentFile.FullName -Destination $targetPath -Force;
+					
+					# Verify copy
+					if (Test-Path $targetPath) {
+						$copiedFile = Get-Item $targetPath;
+						if ($copiedFile.Length -eq $agentFile.Length) {
+							Write-AgentLog "Successfully copied agent to $targetPath";
+							Write-Host "[RMM] Agent copied from $($agentFile.FullName) to $targetPath" -ForegroundColor Green;
+							$agentFound = $true;
+							
+							# Create a marker file for deployment script (PS2 compatible)
+							$infoContent = "SourcePath=$($agentFile.FullName)`r`nSourceName=$($agentFile.Name)`r`nCopyTime=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`r`nSize=$($agentFile.Length)";
+							Set-Content -Path "$destDir\agent-info.txt" -Value $infoContent;
+							
+							break;
+						} else {
+							Write-AgentLog "ERROR: Copy verification failed - size mismatch";
+						};
+					} else {
+						Write-AgentLog "ERROR: Copy verification failed - file not found";
+					};
+				} catch {
+					Write-AgentLog "ERROR: Failed to copy agent: $_";
+				};
+			};
+			
+			if ($agentFound) { break; };
+		};
+		
+		if (-not $agentFound) {
+			Write-AgentLog "No RMM agent found on any searched drive";
+			Write-Host "[RMM] No agent found on removable drives" -ForegroundColor Yellow;
+			
+			# Look for installer scripts as fallback
+			foreach ($drive in $searchDrives) {
+				try {
+					$scripts = Get-ChildItem -Path $drive -Filter '*install*.ps1' -ErrorAction SilentlyContinue;
+					if ($scripts) {
+						foreach ($script in $scripts) {
+							if ($script.Name -match 'agent|rmm|remote') {
+								Copy-Item -Path $script.FullName -Destination "$destDir\install-rmm.ps1" -Force;
+								Write-AgentLog "Copied installation script: $($script.Name)";
+								Write-Host "[RMM] Copied installation script: $($script.Name)" -ForegroundColor Cyan;
+								break;
+							};
+						};
+					};
+				} catch {
+					Write-AgentLog "Error searching for scripts in $drive : $_";
+				};
+			};
+		};
+		
+		Write-AgentLog "Agent search completed";
 	};
 	{
 		Remove-Item -LiteralPath 'Registry::HKLM\Software\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\DevHomeUpdate' -Force -ErrorAction 'SilentlyContinue';
