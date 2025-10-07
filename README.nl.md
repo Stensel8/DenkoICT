@@ -6,7 +6,14 @@
 	</a>
 </p>
 
-[![Dependabot Updates](https://github.com/Stensel8/DenkoICT/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/dependabot/dependabot-updates)
+[![Dependabot Updates](https://github.com/Stensel8/DenkoICT/actions/workflows/dependabot/dependabo### Hoe Het Werkt
+
+Tijdens Windows installatie doet het `autounattend.xml` bestand:
+1. Slaat jouw RMM agent URL op in `C:\Windows\Temp\rmm-url.txt`
+2. Na hostname wijziging en herstart leest het deployment script deze URL
+3. Installeert de RMM agent automatisch met de correcte hostname
+
+Als geen geldige RMM URL geconfigureerd is (heeft nog steeds `YOUR-GUID-HERE`), wordt RMM installatie overgeslagen met een duidelijke waarschuwingsmelding.adge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/dependabot/dependabot-updates)
 
 [![DevSkim](https://github.com/Stensel8/DenkoICT/actions/workflows/devskim.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/devskim.yml)
 
@@ -102,7 +109,8 @@ Ik heb deze GitHub-repository zelf opgezet als centrale plek om technische docum
 ### Configuratiebestanden
 | Bestand | Doel |
 | --- | --- |
-| `autounattend.xml` | Baseline unattend-configuratie voor Windows 11 Pro imaging-scenario's |
+| `autounattend.xml` | Windows unattend-configuratie - zoekt RMM agent op USB en kopieert naar C:\DenkoICT |
+
 
 ## Hoe Deployment Werkt
 
@@ -110,16 +118,32 @@ Ik heb deze GitHub-repository zelf opgezet als centrale plek om technische docum
 ```
 1. Boot vanaf USB met autounattend.xml
 2. Windows 11 Pro 25H2 installeert automatisch
-3. ps_Deploy-Device.ps1 start (handmatig of via OOBE)
-4. Download ps_Custom-Functions.ps1 van GitHub
-5. Voert deployment stappen uit in volgorde:
+3. Tijdens setup: Zoekt op USB-drives naar RMM agent (*Agent*.exe)
+4. Kopieert gevonden agent naar C:\DenkoICT\RMM-Agent.exe
+5. Hostname gewijzigd (PC-XXXX gebaseerd op serienummer)
+6. Systeem herstart na hostname wijziging
+7. Eerste login: ps_Deploy-Device.ps1 start automatisch
+8. Download ps_Custom-Functions.ps1 van GitHub
+9. Voert deployment stappen uit in volgorde:
    ├─ ✓ WinGet Installatie
    ├─ ✓ Driver Updates (Dell DCU / HP HPIA)
    ├─ ✓ Applicatie Installatie
+   ├─ ✓ Bloatware Verwijdering
    ├─ ✓ Achtergrond Configuratie
-   └─ ✓ Windows Updates
-6. Toont samenvatting met status van elke stap
-7. Slaat resultaten op in registry voor latere review
+   ├─ ✓ Windows Updates
+   └─ ✓ RMM Agent Installatie (voert C:\DenkoICT\RMM-Agent.exe uit)
+10. Toont samenvatting met status van elke stap
+11. Slaat resultaten op in registry voor latere review
+```
+   ├─ ✓ WinGet Installatie
+   ├─ ✓ Driver Updates (Dell DCU / HP HPIA)
+   ├─ ✓ Applicatie Installatie
+   ├─ ✓ Bloatware Verwijdering
+   ├─ ✓ Achtergrond Configuratie
+   ├─ ✓ Windows Updates
+   └─ ✓ RMM Agent Installatie (Datto RMM)
+9. Toont samenvatting met status van elke stap
+10. Slaat resultaten op in registry voor latere review
 ```
 
 ### Foutafhandeling
@@ -249,6 +273,97 @@ Get-AllDeploymentSteps | Export-Csv -Path "C:\DeploymentReport.csv"
 | --- | --- | --- |
 | HP ProBook 460 G11        | Geslaagd | Volledig geautomatiseerde uitrol met HP CMSL / HPIA |
 | Dell Latitude 5440        | Geslaagd | Volledig geautomatiseerde uitrol met Dell DCU-CLI |
+
+## Remote Monitoring & Management (RMM)
+
+De deployment bevat geautomatiseerde installatie van RMM agents (zoals Datto RMM), wat remote monitoring, beheer en support mogelijk maakt voor uitgerolde apparaten.
+
+### Functionaliteiten
+- **USB-gebaseerde deployment**: Plaats simpelweg je RMM agent installer op de USB-stick
+- **Geen geheimen in Git**: Agent executable blijft op je USB, wordt nooit gecommit naar version control
+- **Automatische detectie**: Zoekt op USB-drives (D: t/m H:) naar elk bestand dat overeenkomt met `*Agent*.exe`
+- **Auto-kopiëren tijdens setup**: Kopieert agent naar `C:\DenkoICT\RMM-Agent.exe` tijdens Windows installatie
+- **Post-reboot installatie**: RMM installeert NA hostname wijziging voor juiste apparaat identificatie
+- **Pre-installatie check**: Detecteert bestaande installaties om duplicaten te voorkomen
+- **Stille installatie**: Geen gebruikersinteractie nodig
+- **Verificatie**: Bevestigt succesvolle installatie en service status
+
+### Setup Instructies
+
+#### Stap 1: Download Je RMM Agent
+1. Log in op je Datto RMM portaal (of ander RMM systeem)
+2. Navigeer naar Setup → Agent Installation → Windows
+3. Download de Windows agent installer
+   - Voorbeeld bestandsnaam: `DattoRMMAgent-Setup.exe`
+
+#### Stap 2: Bereid USB-stick Voor
+1. Maak bootable Windows 11 USB met [Media Creation Tool](https://www.microsoft.com/software-download/windows11)
+2. Kopieer `autounattend.xml` naar USB root
+3. **Kopieer je RMM agent installer naar USB root**
+   - De bestandsnaam MOET het woord "Agent" bevatten (hoofdletterongevoelig)
+   - ✅ Geldige voorbeelden: `DattoRMMAgent.exe`, `RMM-Agent-Installer.exe`, `Agent.exe`, `MijnBedrijfAgent.exe`
+   - ❌ Ongeldige voorbeelden: `rmm-installer.exe`, `setup.exe`, `datto.exe`
+
+#### Stap 3: Deploy
+1. Start doelapparaat op vanaf USB
+2. Windows installeert automatisch
+3. Tijdens setup zoekt `autounattend.xml` op USB-drives en kopieert agent naar `C:\DenkoICT\RMM-Agent.exe`
+4. Na hostname wijziging en herstart voert deployment script de agent uit
+5. Apparaat verschijnt binnen 5-10 minuten in je RMM portaal
+
+### Hoe Het Werkt
+
+**Tijdens Windows Installatie (Specialize Pass):**
+```powershell
+# autounattend.xml zoekt op USB-drives D: t/m H:
+$usbDrives = @('D:', 'E:', 'F:', 'G:', 'H:')
+foreach ($drive in $usbDrives) {
+    $agentFiles = Get-ChildItem -Path $drive -Filter '*Agent*.exe'
+    if ($agentFiles) {
+        Copy-Item $agentFiles[0] -Destination 'C:\DenkoICT\RMM-Agent.exe'
+        break
+    }
+}
+```
+
+**Tijdens Deployment (Na Herstart):**
+```powershell
+# ps_Deploy-Device.ps1 voert de agent uit
+if (Test-Path 'C:\DenkoICT\RMM-Agent.exe') {
+    Start-Process 'C:\DenkoICT\RMM-Agent.exe' -ArgumentList '/S' -Wait
+}
+```
+
+### Handmatige Installatie
+Om de RMM agent handmatig te installeren na deployment:
+```powershell
+# Als agent bestaat van USB
+if (Test-Path 'C:\DenkoICT\RMM-Agent.exe') {
+    Start-Process 'C:\DenkoICT\RMM-Agent.exe' -ArgumentList '/S' -Wait
+}
+
+# Of download en installeer direct
+.\ps_Install-RMM.ps1 -RmmAgentUrl "https://pinotage.rmm.datto.com/download-agent/windows/JOUW-GUID"
+```
+
+### Verificatie
+Controleer of de agent succesvol geïnstalleerd is:
+```powershell
+# Controleer service status
+Get-Service -Name "CagService"
+
+# Controleer installatie pad
+Test-Path "$env:ProgramFiles\CentraStage"
+```
+
+Apparaten verschijnen binnen 5-10 minuten na installatie in je RMM portaal.
+
+### Waarom RMM Na Herstart Installeert
+
+De RMM agent installatie is opzettelijk gepland **na** de hostname wijziging en herstart omdat:
+- Datto RMM apparaten identificeert op basis van hostname
+- Hostname wijzigen na RMM installatie zorgt voor dubbele apparaat entries
+- Installeren na herstart zorgt voor schone apparaat registratie met correcte hostname
 
 ## Gebruiksgids
 

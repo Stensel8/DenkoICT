@@ -82,6 +82,7 @@ I set up this GitHub repository myself as a central place to store technical doc
 | [ps_Install-Winget.ps1](Scripts/ps_Install-Winget.ps1) | 2.8.1 | Installs Windows Package Manager with fallback methods |
 | [ps_Install-Applications.ps1](Scripts/ps_Install-Applications.ps1) | 2.3.0 | Automates application installation using WinGet with detailed logging |
 | [ps_Install-Drivers.ps1](Scripts/ps_Install-Drivers.ps1) | 2.1.0 | Handles driver deployment leveraging HP CMSL and Dell DCU-CLI |
+| [ps_Install-RMM.ps1](Scripts/ps_Install-RMM.ps1) | 1.0.0 | Installs Datto RMM agent for remote monitoring (config-based, secure) |
 | [ps_Install-MSI.ps1](Scripts/ps_Install-MSI.ps1) | 3.0.0 | MSI package installer with property extraction and exit code handling |
 | [ps_Install-WindowsUpdates.ps1](Scripts/ps_Install-WindowsUpdates.ps1) | 1.0.0 | Windows Update installation using PSWindowsUpdate module |
 
@@ -102,7 +103,8 @@ I set up this GitHub repository myself as a central place to store technical doc
 ### Configuration Files
 | File | Purpose |
 | --- | --- |
-| `autounattend.xml` | Baseline unattend configuration for Windows 11 Pro imaging scenarios |
+| `autounattend.xml` | Windows unattend configuration - searches USB for RMM agent and copies to C:\DenkoICT |
+
 
 ## How Deployment Works
 
@@ -110,16 +112,33 @@ I set up this GitHub repository myself as a central place to store technical doc
 ```
 1. Boot from USB with autounattend.xml
 2. Windows 11 Pro 25H2 installs automatically
-3. ps_Deploy-Device.ps1 starts (manually or via OOBE)
-4. Downloads ps_Custom-Functions.ps1 from GitHub
-5. Executes deployment steps in order:
+3. During setup: Searches USB drives for RMM agent (*Agent*.exe)
+4. Copies found agent to C:\DenkoICT\RMM-Agent.exe
+5. Hostname changed (PC-XXXX based on serial number)
+6. System reboots after hostname change
+7. First logon: ps_Deploy-Device.ps1 starts automatically
+8. Downloads ps_Custom-Functions.ps1 from GitHub
+9. Executes deployment steps in order:
    ├─ ✓ WinGet Installation
    ├─ ✓ Driver Updates (Dell DCU / HP HPIA)
    ├─ ✓ Application Installation
+   ├─ ✓ Bloatware Removal
    ├─ ✓ Wallpaper Configuration
-   └─ ✓ Windows Updates
-6. Shows summary with status of each step
-7. Stores results in registry for later review
+   ├─ ✓ Windows Updates
+   └─ ✓ RMM Agent Installation (executes C:\DenkoICT\RMM-Agent.exe)
+10. Shows summary with status of each step
+11. Stores results in registry for later review
+```
+8. Executes deployment steps in order:
+   ├─ ✓ WinGet Installation
+   ├─ ✓ Driver Updates (Dell DCU / HP HPIA)
+   ├─ ✓ Application Installation
+   ├─ ✓ Bloatware Removal
+   ├─ ✓ Wallpaper Configuration
+   ├─ ✓ Windows Updates
+   └─ ✓ RMM Agent Installation (Datto RMM)
+9. Shows summary with status of each step
+10. Stores results in registry for later review
 ```
 
 ### Error Handling
@@ -249,6 +268,97 @@ Get-AllDeploymentSteps | Export-Csv -Path "C:\DeploymentReport.csv"
 | --- | --- | --- |
 | HP ProBook 460 G11        | Passed | Fully automated deployment with HP CMSL / HPIA |
 | Dell Latitude 5440        | Passed | Fully automated deployment with Dell DCU-CLI |
+
+## Remote Monitoring & Management (RMM)
+
+The deployment includes automated installation of RMM agents (like Datto RMM), enabling remote monitoring, management, and support for deployed devices.
+
+### Features
+- **USB-based deployment**: Simply place your RMM agent installer on the USB drive
+- **No secrets in Git**: Agent executable stays on your USB, never committed to version control
+- **Automatic detection**: Searches USB drives (D: through H:) for any file matching `*Agent*.exe`
+- **Auto-copy during setup**: Copies agent to `C:\DenkoICT\RMM-Agent.exe` during Windows installation
+- **Post-reboot installation**: RMM installs AFTER hostname change for proper device identification
+- **Pre-installation check**: Detects existing installations to avoid duplicates
+- **Silent installation**: No user interaction required
+- **Verification**: Confirms successful installation and service status
+
+### Setup Instructions
+
+#### Step 1: Download Your RMM Agent
+1. Log into your Datto RMM portal (or other RMM system)
+2. Navigate to Setup → Agent Installation → Windows
+3. Download the Windows agent installer
+   - Example filename: `DattoRMMAgent-Setup.exe`
+
+#### Step 2: Prepare USB Drive
+1. Create bootable Windows 11 USB using [Media Creation Tool](https://www.microsoft.com/software-download/windows11)
+2. Copy `autounattend.xml` to USB root
+3. **Copy your RMM agent installer to USB root**
+   - The filename MUST contain the word "Agent" (case-insensitive)
+   - ✅ Valid examples: `DattoRMMAgent.exe`, `RMM-Agent-Installer.exe`, `Agent.exe`, `MyCompanyAgent.exe`
+   - ❌ Invalid examples: `rmm-installer.exe`, `setup.exe`, `datto.exe`
+
+#### Step 3: Deploy
+1. Boot target device from USB
+2. Windows installs automatically
+3. During setup, `autounattend.xml` searches USB drives and copies agent to `C:\DenkoICT\RMM-Agent.exe`
+4. After hostname change and reboot, deployment script executes the agent
+5. Device appears in your RMM portal within 5-10 minutes
+
+### How It Works
+
+**During Windows Installation (Specialize Pass):**
+```powershell
+# autounattend.xml searches USB drives D: through H:
+$usbDrives = @('D:', 'E:', 'F:', 'G:', 'H:')
+foreach ($drive in $usbDrives) {
+    $agentFiles = Get-ChildItem -Path $drive -Filter '*Agent*.exe'
+    if ($agentFiles) {
+        Copy-Item $agentFiles[0] -Destination 'C:\DenkoICT\RMM-Agent.exe'
+        break
+    }
+}
+```
+
+**During Deployment (After Reboot):**
+```powershell
+# ps_Deploy-Device.ps1 executes the agent
+if (Test-Path 'C:\DenkoICT\RMM-Agent.exe') {
+    Start-Process 'C:\DenkoICT\RMM-Agent.exe' -ArgumentList '/S' -Wait
+}
+```
+
+### Manual Installation
+To install the RMM agent manually after deployment:
+```powershell
+# If agent exists from USB
+if (Test-Path 'C:\DenkoICT\RMM-Agent.exe') {
+    Start-Process 'C:\DenkoICT\RMM-Agent.exe' -ArgumentList '/S' -Wait
+}
+
+# Or download and install directly
+.\ps_Install-RMM.ps1 -RmmAgentUrl "https://pinotage.rmm.datto.com/download-agent/windows/YOUR-GUID"
+```
+
+### Verification
+Check if the agent installed successfully:
+```powershell
+# Check service status
+Get-Service -Name "CagService"
+
+# Check installation path
+Test-Path "$env:ProgramFiles\CentraStage"
+```
+
+Devices appear in your RMM portal within 5-10 minutes of installation.
+
+### Why RMM Installs After Reboot
+
+The RMM agent installation is intentionally scheduled **after** the hostname change and reboot because:
+- Datto RMM identifies devices by hostname
+- Changing hostname after RMM installation causes duplicate device entries
+- Installing after reboot ensures clean device registration with correct hostname
 
 ## Usage Guide
 
