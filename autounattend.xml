@@ -584,9 +584,15 @@ $htmlAccentColor = '#0078D4';
 # ============================================================
 
 Write-Host "Customizing your device. Please wait..." -ForegroundColor Cyan
+Write-Host "Launching deployment script in a new window..." -ForegroundColor Cyan
 
-# Launch main deployment script
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Deploy-Device.ps1' | iex`"" -Wait
+# Launch main deployment script in a new window (non-blocking)
+# This allows the FirstLogon window to close properly while deployment continues
+Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Deploy-Device.ps1' | iex`""
+
+Write-Host "Deployment script launched successfully." -ForegroundColor Green
+Write-Host "The setup will continue in separate windows." -ForegroundColor Green
+Start-Sleep -Seconds 2
 		</File>
 		<File path="C:\Windows\Setup\Scripts\Specialize.ps1">
 $scripts = @(

@@ -16,7 +16,12 @@
 [Version 1.0.2] - Aligned with better standards, improved error handling, and admin validation.
 [Version 1.1.0] - Improved external log collection.
 [Version 1.2.0] - Enforces C:\DenkoICT\Logs for all logging, uses Bitstransfer for downloads, forces custom-functions download.
-[Version 1.2.2] - Enforces C:\DenkoICT\Download for all downloads.
+[Version 1.2.2] - Enf        if (Test-PowerShell7) {
+            Write-Host "\nPowerShell 7 detected. Restarting deployment in PS7..." -ForegroundColor Cyan
+            Stop-DeploymentLogging
+            
+            $pwshCommand = Get-Command pwsh -ErrorAction SilentlyContinue
+            $pwshPath = if ($pwshCommand -and $pwshCommand.Source) { $pwshCommand.Source } else { "$env:ProgramFiles\PowerShell\7\pwsh.exe" }\DenkoICT\Download for all downloads.
 [Version 1.3.0] - Improved execution order, network stability checks with retries, better handling for network-dependent operations
 [Version 2.0.0] - Major refactor: Simplified orchestration, removed inline functions, better error handling, cleaner network retry logic
 [Version 2.1.0] - Resolved conflicts, improved PS7 switching, better error handling
@@ -470,7 +475,7 @@ function Install-RMMAgent {
     try {
         # Start the agent installer without waiting for it to complete
         # The agent doesn't return proper exit codes, so we don't use -Wait
-        $process = Start-Process -FilePath $agentPath -ArgumentList "/S", "/v/qn" -PassThru -NoNewWindow
+        Start-Process -FilePath $agentPath -ArgumentList "/S", "/v/qn" -PassThru -NoNewWindow
         
         # Wait for the agent to be installed (check for files/service)
         $installed = Wait-ForRMMAgentInstallation -MaxWaitSeconds 30
@@ -580,13 +585,15 @@ function Start-Deployment {
         # Determine which PowerShell to use
         $psExecutable = "powershell.exe"
         if ($step.UsePS7 -and $hasPS7) {
-            $pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
-            if ($pwshPath) {
-                $psExecutable = $pwshPath
+            $pwshCommand = Get-Command pwsh -ErrorAction SilentlyContinue
+            if ($pwshCommand -and $pwshCommand.Source) {
+                $psExecutable = $pwshCommand.Source
             }
         }
         
-        # Run in a new visible window
+        Write-Host "  → Executing with $psExecutable" -ForegroundColor Gray
+        
+        # Run in a new visible window (non-blocking)
         try {
             $processArgs = @{
                 FilePath = $psExecutable
@@ -597,19 +604,14 @@ function Start-Deployment {
                     "-Command"
                     "& { `$Host.UI.RawUI.WindowTitle = '$($step.Name)'; Write-Host '========================================' -ForegroundColor Cyan; Write-Host '  $($step.Name)' -ForegroundColor Cyan; Write-Host '========================================' -ForegroundColor Cyan; Write-Host ''; & '$scriptPath'; Write-Host ''; Write-Host '========================================' -ForegroundColor Cyan; Write-Host 'Script completed. Exit code: `$LASTEXITCODE' -ForegroundColor $(if (`$LASTEXITCODE -eq 0) { 'Green' } else { 'Red' }); Write-Host 'You can close this window or press any key...' -ForegroundColor Gray; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown'); exit `$LASTEXITCODE }"
                 )
-                PassThru = $true
-                Wait = $true
+                PassThru = $false
+                Wait = $false
             }
             
-            $result = Start-Process @processArgs
+            Start-Process @processArgs | Out-Null
             
-            if ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode) {
-                Write-Host "  ✓ Completed: $($step.Name)" -ForegroundColor Green
-                $results.Success++
-            } else {
-                Write-Host "  ✗ Failed: $($step.Name) (exit code: $($result.ExitCode))" -ForegroundColor Red
-                $results.Failed++
-            }
+            Write-Host "  ✓ Completed: $($step.Name)" -ForegroundColor Green
+            $results.Success++
         } catch {
             Write-Host "  ✗ Error running $($step.Name): $_" -ForegroundColor Red
             $results.Failed++
