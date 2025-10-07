@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 2.1.0
+.VERSION 2.2.0
 
 .AUTHOR Sten Tijhuis
 
@@ -20,6 +20,7 @@
 [Version 1.3.0] - Improved execution order, network stability checks with retries, better handling for network-dependent operations
 [Version 2.0.0] - Major refactor: Simplified orchestration, removed inline functions, better error handling, cleaner network retry logic
 [Version 2.1.0] - Resolved conflicts, improved PS7 switching, better error handling
+[Version 2.2.0] - Fixed log naming, improved agent handling, child scripts in separate windows, reduced WinGet messages
 #>
 
 #requires -Version 5.1
@@ -44,7 +45,7 @@
     Runs full deployment with default settings.
 
 .NOTES
-    Version      : 2.1.0
+    Version      : 2.2.0
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     Requires     : PowerShell 5.1+, Admin rights
@@ -558,6 +559,10 @@ function Start-Deployment {
     Write-Host "`n========================================" -ForegroundColor Cyan
     Write-Host "  EXECUTING DEPLOYMENT STEPS" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Each step will run in a separate PowerShell window." -ForegroundColor Gray
+    Write-Host "You can monitor progress in each window." -ForegroundColor Gray
+    Write-Host ""
     
     $results = @{ Success = 0; Failed = 0; Skipped = 0 }
     
@@ -565,29 +570,48 @@ function Start-Deployment {
         $scriptPath = Join-Path $script:DownloadDirectory $step.Script
         
         if (!(Test-Path $scriptPath)) {
-            Write-Host "`n[SKIPPED] $($step.Name) - Script not found" -ForegroundColor Yellow
+            Write-Host "[SKIPPED] $($step.Name) - Script not found" -ForegroundColor Yellow
             $results.Skipped++
             continue
         }
         
-        Write-Host "`n[RUNNING] $($step.Name)" -ForegroundColor Yellow
+        Write-Host "[RUNNING] $($step.Name)..." -ForegroundColor Cyan
         
+        # Determine which PowerShell to use
+        $psExecutable = "powershell.exe"
         if ($step.UsePS7 -and $hasPS7) {
             $pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
             if ($pwshPath) {
-                $result = Start-Process $pwshPath -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"" -Wait -PassThru
-            } else {
-                $result = Start-Process powershell.exe -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"" -Wait -PassThru
+                $psExecutable = $pwshPath
             }
-        } else {
-            $result = Start-Process powershell.exe -ArgumentList "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"" -Wait -PassThru
         }
         
-        if ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode) {
-            Write-Host "  ✓ Completed: $($step.Name)" -ForegroundColor Green
-            $results.Success++
-        } else {
-            Write-Host "  ✗ Failed: $($step.Name) (exit code: $($result.ExitCode))" -ForegroundColor Red
+        # Run in a new visible window
+        try {
+            $processArgs = @{
+                FilePath = $psExecutable
+                ArgumentList = @(
+                    "-NoProfile"
+                    "-ExecutionPolicy", "Bypass"
+                    "-NoExit"
+                    "-Command"
+                    "& { `$Host.UI.RawUI.WindowTitle = '$($step.Name)'; Write-Host '========================================' -ForegroundColor Cyan; Write-Host '  $($step.Name)' -ForegroundColor Cyan; Write-Host '========================================' -ForegroundColor Cyan; Write-Host ''; & '$scriptPath'; Write-Host ''; Write-Host '========================================' -ForegroundColor Cyan; Write-Host 'Script completed. Exit code: `$LASTEXITCODE' -ForegroundColor $(if (`$LASTEXITCODE -eq 0) { 'Green' } else { 'Red' }); Write-Host 'You can close this window or press any key...' -ForegroundColor Gray; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown'); exit `$LASTEXITCODE }"
+                )
+                PassThru = $true
+                Wait = $true
+            }
+            
+            $result = Start-Process @processArgs
+            
+            if ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode) {
+                Write-Host "  ✓ Completed: $($step.Name)" -ForegroundColor Green
+                $results.Success++
+            } else {
+                Write-Host "  ✗ Failed: $($step.Name) (exit code: $($result.ExitCode))" -ForegroundColor Red
+                $results.Failed++
+            }
+        } catch {
+            Write-Host "  ✗ Error running $($step.Name): $_" -ForegroundColor Red
             $results.Failed++
         }
     }

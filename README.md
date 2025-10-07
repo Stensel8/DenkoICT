@@ -73,7 +73,7 @@ I set up this GitHub repository myself as a central place to store technical doc
 ### Core Scripts
 | Script | Version | Purpose |
 | --- | --- | --- |
-| [ps_Deploy-Device.ps1](Scripts/ps_Deploy-Device.ps1) | 1.3.0 | **Main orchestrator** - Coordinates entire deployment process with error handling |
+| [ps_Deploy-Device.ps1](Scripts/ps_Deploy-Device.ps1) | 2.2.0 | **Main orchestrator** - Coordinates entire deployment process with error handling, runs child scripts in separate windows |
 | [ps_Custom-Functions.ps1](Scripts/ps_Custom-Functions.ps1) | 3.0.0 | **Function library** - Logging, network testing, exit code interpretation, status tracking |
 
 ### Installation Scripts
@@ -103,7 +103,7 @@ I set up this GitHub repository myself as a central place to store technical doc
 ### Configuration Files
 | File | Purpose |
 | --- | --- |
-| `autounattend.xml` | Windows unattend configuration - searches USB for RMM agent and copies to C:\DenkoICT |
+| `autounattend.xml` | Windows unattend configuration - searches USB for RMM agent and copies to C:\DenkoICT\Download\Agent.exe |
 
 
 ## How Deployment Works
@@ -113,26 +113,22 @@ I set up this GitHub repository myself as a central place to store technical doc
 1. Boot from USB with autounattend.xml
 2. Windows 11 Pro 25H2 installs automatically
 3. During setup: Searches USB drives for RMM agent (*Agent*.exe)
-4. Copies found agent to C:\DenkoICT\RMM-Agent.exe
+4. Copies found agent to C:\DenkoICT\Download\Agent.exe
 5. Hostname changed (PC-XXXX based on serial number)
 6. System reboots after hostname change
 7. First logon: ps_Deploy-Device.ps1 starts automatically
 8. Downloads ps_Custom-Functions.ps1 from GitHub
-9. Executes deployment steps in order:
+9. Executes deployment steps in separate PowerShell windows:
    ├─ ✓ WinGet Installation
    ├─ ✓ Driver Updates (Dell DCU / HP HPIA)
    ├─ ✓ Application Installation
    ├─ ✓ Bloatware Removal
    ├─ ✓ Wallpaper Configuration
    ├─ ✓ Windows Updates
-   └─ ✓ RMM Agent Installation (executes C:\DenkoICT\RMM-Agent.exe)
+   └─ ✓ RMM Agent Installation (executes C:\DenkoICT\Download\Agent.exe)
 10. Shows summary with status of each step
 11. Stores results in registry for later review
 ```
-8. Executes deployment steps in order:
-   ├─ ✓ WinGet Installation
-   ├─ ✓ Driver Updates (Dell DCU / HP HPIA)
-   ├─ ✓ Application Installation
    ├─ ✓ Bloatware Removal
    ├─ ✓ Wallpaper Configuration
    ├─ ✓ Windows Updates
@@ -302,7 +298,7 @@ The deployment includes automated installation of RMM agents (like Datto RMM), e
 #### Step 3: Deploy
 1. Boot target device from USB
 2. Windows installs automatically
-3. During setup, `autounattend.xml` searches USB drives and copies agent to `C:\DenkoICT\RMM-Agent.exe`
+3. During setup, `autounattend.xml` searches USB drives and copies agent to `C:\DenkoICT\Download\Agent.exe`
 4. After hostname change and reboot, deployment script executes the agent
 5. Device appears in your RMM portal within 5-10 minutes
 
@@ -315,7 +311,7 @@ $usbDrives = @('D:', 'E:', 'F:', 'G:', 'H:')
 foreach ($drive in $usbDrives) {
     $agentFiles = Get-ChildItem -Path $drive -Filter '*Agent*.exe'
     if ($agentFiles) {
-        Copy-Item $agentFiles[0] -Destination 'C:\DenkoICT\RMM-Agent.exe'
+        Copy-Item $agentFiles[0] -Destination 'C:\DenkoICT\Download\Agent.exe'
         break
     }
 }
@@ -324,8 +320,10 @@ foreach ($drive in $usbDrives) {
 **During Deployment (After Reboot):**
 ```powershell
 # ps_Deploy-Device.ps1 executes the agent
-if (Test-Path 'C:\DenkoICT\RMM-Agent.exe') {
-    Start-Process 'C:\DenkoICT\RMM-Agent.exe' -ArgumentList '/S' -Wait
+if (Test-Path 'C:\DenkoICT\Download\Agent.exe') {
+    Start-Process 'C:\DenkoICT\Download\Agent.exe' -ArgumentList '/S' -NoNewWindow -PassThru
+    # Waits up to 30 seconds for service/files to appear
+    Wait-ForRMMAgentInstallation -MaxWaitSeconds 30
 }
 ```
 
@@ -333,12 +331,9 @@ if (Test-Path 'C:\DenkoICT\RMM-Agent.exe') {
 To install the RMM agent manually after deployment:
 ```powershell
 # If agent exists from USB
-if (Test-Path 'C:\DenkoICT\RMM-Agent.exe') {
-    Start-Process 'C:\DenkoICT\RMM-Agent.exe' -ArgumentList '/S' -Wait
+if (Test-Path 'C:\DenkoICT\Download\Agent.exe') {
+    Start-Process 'C:\DenkoICT\Download\Agent.exe' -ArgumentList '/S' -NoNewWindow -PassThru
 }
-
-# Or download and install directly
-.\ps_Install-RMM.ps1 -RmmAgentUrl "https://pinotage.rmm.datto.com/download-agent/windows/YOUR-GUID"
 ```
 
 ### Verification
