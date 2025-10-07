@@ -315,8 +315,10 @@ try {
     }
     
     # Generate summary
-    $successCount = ($results | Where-Object { $_.Success }).Count
-    $failedCount = ($results | Where-Object { -not $_.Success }).Count
+    $successResults = @($results | Where-Object { $_.Success })
+    $failedResults = @($results | Where-Object { -not $_.Success })
+    $successCount = $successResults.Count
+    $failedCount = $failedResults.Count
     $totalDuration = ($results | Measure-Object -Property Duration -Sum).Sum
     
     Write-Log "" -Level Info

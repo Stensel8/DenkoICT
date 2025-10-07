@@ -475,8 +475,14 @@ function Remove-ProvisionedByPattern {
                 Write-Log "Successfully removed provisioned package: $packageName" -Level 'Success'
                 $Succeeded.Add("Removed provisioned: $packageName") | Out-Null
             } catch {
-                Write-Log "Failed to remove provisioned package $($packageName): $($_.Exception.Message)" -Level 'Error'
-                $Failed.Add("Failed to remove provisioned: $packageName") | Out-Null
+                # Check if it's a "path not found" error (package already removed by earlier operation)
+                if ($_.Exception.Message -match "Het systeem kan het opgegeven pad niet vinden|The system cannot find the path specified") {
+                    Write-Log "Provisioned package already removed or not found: $packageName" -Level 'Info'
+                    $Succeeded.Add("Already removed: $packageName") | Out-Null
+                } else {
+                    Write-Log "Failed to remove provisioned package $($packageName): $($_.Exception.Message)" -Level 'Error'
+                    $Failed.Add("Failed to remove provisioned: $packageName") | Out-Null
+                }
             }
         }
     }
