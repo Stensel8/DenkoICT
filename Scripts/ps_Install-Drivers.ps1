@@ -270,8 +270,8 @@ try {
         }
     }
     else {
-        Write-Log "Unsupported manufacturer: $manufacturer" -Level Warning
-        Write-Log "Supported: Dell, HP" -Level Info
+        Write-Log "WARNING: Manufacturer '$manufacturer' is not supported for automatic driver installation." -Level Warning
+        Write-Log "Supported manufacturers: Dell, HP" -Level Info
     }
     
     Write-Log "Driver update process completed" -Level Success
