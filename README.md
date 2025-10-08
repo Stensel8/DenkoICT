@@ -27,10 +27,6 @@ Automated Windows 11 Pro deployment that actually works. No MDT, no VBScript, no
 - Deployment continues when individual steps fail
 - RMM agent installation (Datto, etc.)
 
-![Deployment Flow](Docs/Deployment_Flow.png)
-
-![Expected Result](Docs/Expected_Result.png)
-
 ## Quick Start
 
 **Prerequisites:** Windows 11 Pro 25H2, **Ethernet connection** (required for script downloads)
