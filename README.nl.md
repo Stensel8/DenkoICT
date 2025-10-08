@@ -12,7 +12,7 @@
 
 [![PSScriptAnalyzer](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml)
 
-Geautomatiseerde Windows 11 Pro deployment die daadwerkelijk werkt. Geen MDT, geen VBScript, geen handmatig klikken. Gebruikt PowerShell 2.0 in WinPE, PowerShell 5.1 om PowerShell 7 op te starten, en vervolgens PowerShell 7 voor de daadwerkelijke deployment. Moderne tools waar mogelijk.
+Geautomatiseerde Windows 11 Pro deployment tools. Geen handmatige kliks. Gebruikt PowerShell 2.0 in WinPE, PowerShell 5.1 om PowerShell 7 aan te roepen en vervolgens PowerShell 7 voor de daadwerkelijke deployment. Gebruikt moderne tools waar mogelijk.
 
 ![Deployment Flow](Docs/Deployment_Flow.png)
 
