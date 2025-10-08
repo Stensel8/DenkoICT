@@ -346,8 +346,6 @@ if (`$exitCode -eq 0) {
 }
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host ''
-Write-Host 'Press any key to close this window...' -ForegroundColor Gray
-`$null = [Console]::ReadKey(`$true)
 exit `$exitCode
 "@
 
@@ -413,8 +411,6 @@ if (`$exitCode -eq 0) {
 }
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host ''
-Write-Host 'Press any key to close this window...' -ForegroundColor Gray
-`$null = [Console]::ReadKey(`$true)
 exit `$exitCode
 "@
 
