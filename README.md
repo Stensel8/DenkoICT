@@ -21,7 +21,7 @@ Automated Windows 11 Pro deployment that actually works. No MDT, no VBScript, no
 ## What You Get
 
 - Zero-touch Windows 11 deployment via USB boot
-- Automatic driver updates (Dell DCU-CLI, HP CMSL)
+- Automatic driver updates (Dell DCU-CLI, HP IA)
 - WinGet application deployment with retry logic
 - Registry-based progress tracking that survives crashes
 - Deployment continues when individual steps fail
@@ -50,7 +50,7 @@ Without Ethernet, only the base Windows install with hostname change happens.
 
 ## How It Works
 
-**PowerShell Evolution:**
+**PowerShell version:**
 - **Windows PE**: PowerShell 2.0 during setup (inside autounattend.xml)
 - **First Boot**: PowerShell 5.1 downloads and installs PowerShell 7  
 - **Deployment**: PowerShell 7 runs all deployment scripts
@@ -80,7 +80,7 @@ If something fails, deployment continues. Check `C:\DenkoICT\Logs` for detailed 
 | [ps_Custom-Functions.ps1](Scripts/ps_Custom-Functions.ps1) | Function library - logging, network tests, exit codes |
 | [ps_Install-Winget.ps1](Scripts/ps_Install-Winget.ps1) | Installs WinGet with fallback methods |
 | [ps_Install-Applications.ps1](Scripts/ps_Install-Applications.ps1) | WinGet app deployment |
-| [ps_Install-Drivers.ps1](Scripts/ps_Install-Drivers.ps1) | Dell DCU-CLI / HP CMSL driver updates |
+| [ps_Install-Drivers.ps1](Scripts/ps_Install-Drivers.ps1) | Dell DCU-CLI / HP IA driver updates |
 
 ## Usage Examples
 
