@@ -611,11 +611,12 @@ function Test-WinGet {
         and Test-WinGetAvailable with a single comprehensive function.
 
     .PARAMETER ReturnPath
-        If specified, returns the path to winget.exe instead of boolean.
+        If specified, returns the path to winget.exe instead of PSCustomObject.
+        Returns $null if WinGet is not found.
 
     .OUTPUTS
-        Returns PSCustomObject with WinGetPath, IsAvailable, Version properties.
-        If ReturnPath is specified and WinGet is not found, returns $null.
+        [PSCustomObject] - Default: Returns object with WinGetPath, IsAvailable, Version properties
+        [String] - When ReturnPath specified: Returns path to winget.exe or $null
 
     .EXAMPLE
         $winget = Test-WinGet
@@ -935,9 +936,7 @@ function Get-RemoteScript {
 
         [string]$DownloadDir = 'C:\DenkoICT\Download',
 
-        [int]$MaxRetries = 3,
-
-        [int]$TimeoutSeconds = 30
+        [int]$MaxRetries = 3
     )
 
     # List of all deployment scripts
@@ -986,6 +985,7 @@ function Get-RemoteScript {
         $successCount = 0
         $failCount = 0
 
+        # Download each missing script individually using the Single parameter set
         foreach ($script in $missingScripts) {
             $url = "$BaseUrl/$script"
             $path = Join-Path $DownloadDir $script
@@ -1037,12 +1037,19 @@ function Get-RemoteScript {
             } catch {
                 # Fallback to WebClient
                 Write-Log "BITS transfer failed, using WebClient..." -Level Debug
-                $webClient = New-Object System.Net.WebClient
-                $webClient.Encoding = [System.Text.Encoding]::UTF8
-                $content = $webClient.DownloadString($ScriptUrl)
+                $webClient = $null
+                try {
+                    $webClient = New-Object System.Net.WebClient
+                    $webClient.Encoding = [System.Text.Encoding]::UTF8
+                    $content = $webClient.DownloadString($ScriptUrl)
 
-                # Write with UTF-8 no-BOM encoding
-                [System.IO.File]::WriteAllText($SavePath, $content, (New-Object System.Text.UTF8Encoding $false))
+                    # Write with UTF-8 no-BOM encoding
+                    [System.IO.File]::WriteAllText($SavePath, $content, (New-Object System.Text.UTF8Encoding $false))
+                } finally {
+                    if ($webClient) {
+                        $webClient.Dispose()
+                    }
+                }
             }
 
             # Verify hash if provided
