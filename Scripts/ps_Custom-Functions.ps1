@@ -884,9 +884,6 @@ function Get-RemoteScript {
     .PARAMETER MaxRetries
         Maximum retry attempts (default: 3).
 
-    .PARAMETER TimeoutSeconds
-        Timeout for each download attempt (default: 30).
-
     .EXAMPLE
         Get-RemoteScript -ScriptName "ps_Custom-Functions.ps1"
         Downloads the custom functions script.
@@ -985,7 +982,7 @@ function Get-RemoteScript {
         $successCount = 0
         $failCount = 0
 
-        # Download each missing script individually using the Single parameter set
+        # Download each missing script individually (uses different parameter set to avoid recursion)
         foreach ($script in $missingScripts) {
             $url = "$BaseUrl/$script"
             $path = Join-Path $DownloadDir $script
