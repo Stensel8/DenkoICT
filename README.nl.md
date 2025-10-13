@@ -12,11 +12,11 @@
 
 [![PSScriptAnalyzer](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml)
 
-Geautomatiseerde Windows 11 Pro deployment die daadwerkelijk werkt. Geen MDT, geen VBScript, geen handmatig klikken. Gebruikt PowerShell 2.0 in WinPE, PowerShell 5.1 om PowerShell 7 op te starten, en vervolgens PowerShell 7 voor de daadwerkelijke deployment. Moderne tools waar mogelijk.
+Geautomatiseerde Windows 11 Pro deployment tools. Geen handmatige kliks. Gebruikt PowerShell 2.0 in WinPE, PowerShell 5.1 om PowerShell 7 aan te roepen en vervolgens PowerShell 7 voor de daadwerkelijke deployment. Gebruikt moderne tools waar mogelijk.
 
-![Deployment Flow](Docs/Deployment_Flow.png)
+![Terminalscherm dat een succesvol Windows-implementatieproces toont. De console-uitvoer laat voltooide stappen zien: WinGet-installatie, Driverupdates voor HP en Dell, Applicatie-implementatie, Bloatware-verwijdering, Bureaubladachtergrond-configuratie, en Windows Updates. Alle zes stappen zijn succesvol uitgevoerd met PowerShell 7, zonder fouten of overgeslagen onderdelen. Logbestand opgeslagen op C:\DenkoICT\Logs\ps_Deploy-Device.ps1.log](Docs/Deployment_Flow.png)
 
-![Verwacht Resultaat](Docs/Expected_Result.png)
+![Schermafbeelding van het verwachte eindresultaat na een succesvolle Windows 11 deployment. Toont een volledig geconfigureerd bureaublad met geïnstalleerde applicaties, bijgewerkte drivers, en een schoon systeem zonder bloatware. Alle deployment-stappen zijn voltooid, inclusief Windows Updates en RMM-agentinstallatie, klaar voor gebruik door eindgebruikers.](Docs/Expected_Result.png)
 
 ## Wat Je Krijgt
 
@@ -44,7 +44,7 @@ Geautomatiseerde Windows 11 Pro deployment die daadwerkelijk werkt. Geen MDT, ge
 5. **USB removal timing:**
    - **Houd USB aangesloten** tijdens de eerste reboot (hostname change)
    - **Safe to remove** na 2+ reboots wanneer de progress >64% toont (black screen phase)
-   - **Als er geen RMM agent is:** USB kan op elk moment na de eerste reboot worden verwijderd
+   - **Als er geen RMM agent benodigd is:** De USB kan op elk moment na de eerste reboot worden verwijderd
 
 Zonder Ethernet gebeurt alleen de basis Windows install met hostname change.
 
@@ -126,16 +126,51 @@ Tijdens Windows setup zoekt `autounattend.xml` naar files die matchen met `*Agen
     - HP: C:\SWSetup\
     - Dell: C:\Program Files\Dell\CommandUpdate
 
+## Windows 11 25H2 Compatibiliteit & Target Versie
+
+Dit project is specifiek **geoptimaliseerd voor Windows 11 25H2** en target deze versie actief. Er zijn **geen compatibiliteitsrisico's** bij het gebruik van 25H2 voor deployment.
+
+### Waarom 25H2?
+
+Windows 11 25H2 is technisch **identiek aan 24H2** omdat beide dezelfde servicing branch delen [[1](https://techcommunity.microsoft.com/blog/windows-itpro-blog/get-ready-for-windows-11-version-25h2/4426437)][[2](https://www.tomshardware.com/software/windows/early-windows-11-25h2-benchmarks-confirm-the-update-provides-no-performance-improvements-over-24h2)]. De belangrijkste voordelen zijn:
+
+- **Extended support lifecycle**: 25H2 krijgt support tot oktober 2027 (Pro) versus oktober 2026 voor 24H2 [[3](https://pureinfotech.com/should-install-windows-11-25h2/)][[4](https://endoflife.date/windows)]
+- **Identieke codebase**: Beide versies draaien dezelfde kernel en hebben identieke driver compatibiliteit [[1](https://techcommunity.microsoft.com/blog/windows-itpro-blog/get-ready-for-windows-11-version-25h2/4426437)]
+- **Zero performance overhead**: Benchmarks tonen 0% verschil tussen 24H2 en 25H2 [[2](https://www.tomshardware.com/software/windows/early-windows-11-25h2-benchmarks-confirm-the-update-provides-no-performance-improvements-over-24h2)]
+- **Geen compatibiliteitsrisico's**: Microsoft bevestigt dat 25H2 geen impact heeft op bestaande driver- en applicatiecompatibiliteit [[1](https://techcommunity.microsoft.com/blog/windows-itpro-blog/get-ready-for-windows-11-version-25h2/4426437)]
+
+### Wat is een Servicing Branch?
+
+Een **servicing branch** is de onderliggende codebasis van een Windows-versie [[1](https://techcommunity.microsoft.com/blog/windows-itpro-blog/get-ready-for-windows-11-version-25h2/4426437)]. Wanneer twee versies dezelfde branch delen (zoals 24H2 en 25H2), betekent dit:
+
+- Identieke kernel, drivers, en core componenten
+- Nieuwe features voor 25H2 worden maanden vooraf in **disabled state** naar 24H2-systemen gepusht via reguliere updates
+- Het "upgraden" naar 25H2 is simpelweg het enableren van deze features via een klein enablement package (~500MB) [[5](https://www.free-codecs.com/news/windows-11-25h2-download-available-before-official-launch.htm)]
+
+Dit staat in contrast met grote versiesprong zoals 23H2 → 24H2, waar een volledige OS-swap nodig was.
+
+### Geteste Hardware
+
+Dit deployment project is succesvol getest op de volgende apparaten:
+
+| Apparaat Model | Status | Opmerkingen |
+|---|---|---|
+| HP ProBook 460 G11 | ✅ Geslaagd | Volledig geautomatiseerde implementatie met HP CMSL / HPIA |
+| Dell Latitude 5440 | ✅ Geslaagd | Volledig geautomatiseerde implementatie met Dell DCU-CLI |
+| Dell OptiPlex Micro Plus 7020 | ✅ Geslaagd | Volledig geautomatiseerde implementatie met Dell DCU-CLI |
+
+Alle tests zijn uitgevoerd met Windows 11 Pro 25H2 (build 26100.x).
+
 ## Licentie
-Ik bouw dit project onder de [MIT Licentie](LICENSE)
+Ik breng dit project uit onder de [MIT Licentie](LICENSE)
 
 ## Credits
 Gebouwd met inspiratie van:
 - [stensel8](https://github.com/stensel8)
-- [realsdeals/](https://github.com/realsdeals/)  
+- [realsdeals](https://github.com/realsdeals)
 - [jeffdfield](https://github.com/jeffdfield)
 - [ChrisTitusTech/winutil](https://github.com/ChrisTitusTech/winutil)
-- [asheroto/winget-install](https://github.com/asheroto/winget-install)  
+- [asheroto/winget-install](https://github.com/asheroto/winget-install)
 - [FriendsOfMDT/PSD](https://github.com/FriendsOfMDT/PSD)
 - [KelvinTegelaar/RunAsUser](https://github.com/KelvinTegelaar/RunAsUser)
 - [Raphire/Win11Debloat](https://github.com/Raphire/Win11Debloat)
@@ -145,44 +180,25 @@ Gebouwd met inspiratie van:
 - [REALSDEALS/pcHealth](https://github.com/REALSDEALS/pcHealth)
 - [REALSDEALS/pcHealthPlus-VS](https://github.com/REALSDEALS/pcHealthPlus-VS)
 - [REALSDEALS/pcHealthPlus](https://github.com/REALSDEALS/pcHealthPlus)
-
-
-- [https://github.com/stensel8/pchealth](https://github.com/stensel8/pchealth)
-- [https://github.com/realsdeals/](https://github.com/realsdeals/)
-- [https://github.com/jeffdfield](https://github.com/jeffdfield)
-- [https://github.com/FriendsOfMDT/PSD](https://github.com/FriendsOfMDT/PSD)
-- [https://github.com/ChrisTitusTech/winutil](https://github.com/ChrisTitusTech/winutil)
-- [https://github.com/KelvinTegelaar/RunAsUser](https://github.com/KelvinTegelaar/RunAsUser)
+- [Stensel8/pchealth](https://github.com/stensel8/pchealth)
+- [Stensel8/Intune-Deployment-Tool](https://github.com/Stensel8/Intune-Deployment-Tool)
+- [rink-turksma/IntunePrepTool](https://github.com/rink-turksma/IntunePrepTool)
 
 ### Aanvullende referenties
-- [https://www.smartdeploy.com/download/trial-guide/](https://www.smartdeploy.com/download/trial-guide/)
-- [https://docs.microsoft.com/en-us/windows/deployment/windows-deployment-scenarios](https://docs.microsoft.com/en-us/windows/deployment/windows-deployment-scenarios)
-- [https://github.com/FriendsOfMDT/PSD](https://github.com/FriendsOfMDT/PSD)
-- [https://learn.microsoft.com/en-us/intune/configmgr/mdt/](https://learn.microsoft.com/en-us/intune/configmgr/mdt/)
-- [https://www.microsoft.com/en-us/download/details.aspx?id=54259](https://www.microsoft.com/en-us/download/details.aspx?id=54259)
-- [https://github.com/Stensel8/Intune-Deployment-Tool](https://github.com/Stensel8/Intune-Deployment-Tool)
-- [https://github.com/rink-turksma/IntunePrepTool](https://github.com/rink-turksma/IntunePrepTool)
-- [https://uupdump.net/](https://uupdump.net/)
-- [https://2pintsoftware.com/products/deployr](https://2pintsoftware.com/products/deployr)
-- [https://www.immy.bot/](https://www.immy.bot/)
-- [https://github.com/Romanitho/Winget-Install](https://github.com/Romanitho/Winget-Install)
-- [https://github.com/ChrisTitusTech/winutil](https://github.com/ChrisTitusTech/winutil)
-- [https://api.github.com/repos/microsoft/winget-cli/releases/latest](https://api.github.com/repos/microsoft/winget-cli/releases/latest)
-- [https://github.com/KelvinTegelaar/RunAsUser](https://github.com/KelvinTegelaar/RunAsUser)
-- [https://github.com/asheroto/winget-install](https://github.com/asheroto/winget-install)
-- [https://www.powershellgallery.com/packages/winget-install/](https://www.powershellgallery.com/packages/winget-install/)
-- [https://www.powershellgallery.com/packages/HPCMSL/](https://www.powershellgallery.com/packages/HPCMSL/)
-- [https://github.com/omaha-consulting/winstall](https://github.com/omaha-consulting/winstall)
-- [https://github.com/omaha-consulting/winget.pro](https://github.com/omaha-consulting/winget.pro)
-- [https://github.com/REALSDEALS/pcHealth](https://github.com/REALSDEALS/pcHealth)
-- [https://github.com/REALSDEALS/pcHealthPlus-VS](https://github.com/REALSDEALS/pcHealthPlus-VS)
-- [https://github.com/REALSDEALS/pcHealthPlus](https://github.com/REALSDEALS/pcHealthPlus)
-- [https://github.com/Raphire/Win11Debloat/tree/master](https://github.com/Raphire/Win11Debloat/tree/master)
-
+- [Microsoft Windows Deployment Documentation](https://docs.microsoft.com/en-us/windows/deployment/windows-deployment-scenarios)
+- [Microsoft Intune/MDT Documentation](https://learn.microsoft.com/en-us/intune/configmgr/mdt/)
+- [Microsoft Deployment Toolkit](https://www.microsoft.com/en-us/download/details.aspx?id=54259)
+- [SmartDeploy Trial Guide](https://www.smartdeploy.com/download/trial-guide/)
+- [UUP Dump](https://uupdump.net/)
+- [2PintSoftware DeployR](https://2pintsoftware.com/products/deployr)
+- [ImmyBot](https://www.immy.bot/)
+- [WinGet CLI GitHub](https://api.github.com/repos/microsoft/winget-cli/releases/latest)
+- [PowerShell Gallery: winget-install](https://www.powershellgallery.com/packages/winget-install/)
+- [PowerShell Gallery: HPCMSL](https://www.powershellgallery.com/packages/HPCMSL/)
+- [WinGet Return Codes](https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md)
 
 ### Microsoft-ecosysteempartners
-- [https://learn.robopack.com/home](https://learn.robopack.com/home)
-- [https://www.rimo3.com/ms-intune-migration](https://www.rimo3.com/ms-intune-migration)
-- [https://winstall.app/](https://winstall.app/)
-- [https://winget.pro/](https://winget.pro/)
-- [https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md](https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md)
+- [RoboPack](https://learn.robopack.com/home)
+- [Rimo3](https://www.rimo3.com/ms-intune-migration)
+- [winstall.app](https://winstall.app/)
+- [winget.pro](https://winget.pro/)
