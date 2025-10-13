@@ -162,7 +162,7 @@ This deployment project has been successfully tested on the following devices:
 All tests were performed with Windows 11 Pro 25H2 (build 26100.x).
 
 ## License
-I am building this project under the [MIT License](LICENSE)
+I am releasing this project under the [MIT License](LICENSE)
 
 ## Credits
 Built with inspiration from:
