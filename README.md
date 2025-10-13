@@ -157,7 +157,7 @@ This deployment project has been successfully tested on the following devices:
 |---|---|---|
 | HP ProBook 460 G11 | ✅ Passed | Fully automated deployment with HP CMSL / HPIA |
 | Dell Latitude 5440 | ✅ Passed | Fully automated deployment with Dell DCU-CLI |
-| OptiPlex Micro Plus 7020 | ✅ Passed | Fully automated deployment with Dell DCU-CLI |
+| Dell OptiPlex Micro Plus 7020 | ✅ Passed | Fully automated deployment with Dell DCU-CLI |
 
 All tests were performed with Windows 11 Pro 25H2 (build 26100.x).
 
