@@ -53,25 +53,6 @@
 
 #requires -Version 5.1
 
-[CmdletBinding(DefaultParameterSetName = 'Preset', SupportsShouldProcess)]
-param(
-    [Parameter()]
-    [ValidateScript({ Test-Path $_ -PathType Leaf })]
-    [string]$WallpaperPath = "C:\Windows\Web\Wallpaper\Windows\img19.jpg",
-
-    [Parameter(ParameterSetName = 'Preset')]
-    [ValidateSet('Dark', 'Light', 'Mixed', 'Inverted')]
-    [string]$Theme = 'Dark',
-
-    [Parameter(ParameterSetName = 'Custom')]
-    [ValidateSet('light', 'dark')]
-    [string]$AppsTheme,
-
-    [Parameter(ParameterSetName = 'Custom')]
-    [ValidateSet('light', 'dark')]
-    [string]$SystemTheme
-)
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -147,43 +128,21 @@ function Close-SettingsIfOpen {
 try {
     Write-Host "Applying configuration..." -ForegroundColor Cyan
     
-    # Determine theme settings
-    if ($PSCmdlet.ParameterSetName -eq 'Preset') {
-        switch ($Theme) {
-            'Dark'     { $AppsTheme = 'dark';  $SystemTheme = 'dark' }
-            'Light'    { $AppsTheme = 'light'; $SystemTheme = 'light' }
-            'Mixed'    { $AppsTheme = 'light'; $SystemTheme = 'dark' }
-            'Inverted' { $AppsTheme = 'dark';  $SystemTheme = 'light' }
-        }
-    }
+    # Fixed configuration values
+    $WallpaperPath = "$env:WINDIR\Web\Wallpaper\Windows\img19.jpg"
+    $AppsTheme = 'dark'
+    $SystemTheme = 'dark'
     
     # Ensure Settings isn't running
     Close-SettingsIfOpen
     
     # Set wallpaper
-    if ($PSCmdlet.ShouldProcess($WallpaperPath, 'Set wallpaper')) {
-        Write-Host "Setting wallpaper: $WallpaperPath"
-        [WinAPI]::SetWallpaper($WallpaperPath)
-    }
+    Write-Host "Setting wallpaper: $WallpaperPath"
+    [WinAPI]::SetWallpaper($WallpaperPath)
     
-    # Apply theme if specified
-    if ($AppsTheme -or $SystemTheme) {
-        # Get current values if not specified
-        $keyPath = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-        if (!$AppsTheme) {
-            $current = (Get-ItemProperty $keyPath -Name AppsUseLightTheme -ErrorAction SilentlyContinue).AppsUseLightTheme
-            $AppsTheme = if ($current -eq 1) { 'light' } else { 'dark' }
-        }
-        if (!$SystemTheme) {
-            $current = (Get-ItemProperty $keyPath -Name SystemUsesLightTheme -ErrorAction SilentlyContinue).SystemUsesLightTheme
-            $SystemTheme = if ($current -eq 1) { 'light' } else { 'dark' }
-        }
-        
-        if ($PSCmdlet.ShouldProcess("Apps=$AppsTheme, System=$SystemTheme", 'Set theme')) {
-            Write-Host "Setting theme: Apps=$AppsTheme, System=$SystemTheme"
-            Set-Theme -Apps $AppsTheme -System $SystemTheme
-        }
-    }
+    # Apply dark theme
+    Write-Host "Setting theme: Apps=$AppsTheme, System=$SystemTheme"
+    Set-Theme -Apps $AppsTheme -System $SystemTheme
     
     Write-Host "Configuration applied successfully" -ForegroundColor Green
     

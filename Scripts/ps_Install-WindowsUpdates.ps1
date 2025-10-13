@@ -57,18 +57,7 @@
     Requires     : PowerShell 5.1+, Admin rights
 #>
 
-[CmdletBinding()]
-param(
-    [ValidateSet("Security", "Critical", "Updates", "Drivers", "Optional")]
-    [string[]]$Categories = @("Security", "Critical", "Updates"),
-    
-    [switch]$AutoReboot,
-    
-    [ValidateRange(1, 500)]
-    [int]$MaxUpdates = 100,
-    
-    [switch]$IgnorePendingReboot
-)
+
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -76,13 +65,10 @@ $ErrorActionPreference = 'Stop'
 # Setup logging
 $LogDir = "C:\DenkoICT\Logs"
 $LogFile = Join-Path $LogDir "ps_Install-WindowsUpdates.ps1.log"
-$TranscriptFile = Join-Path $LogDir "ps_Install-WindowsUpdates.ps1.transcript"
 
 if (!(Test-Path $LogDir)) {
     New-Item -Path $LogDir -ItemType Directory -Force | Out-Null
 }
-
-Start-Transcript -Path $TranscriptFile -Force | Out-Null
 
 function Write-Log {
     param(
@@ -195,19 +181,15 @@ try {
     Write-Log "  WINDOWS UPDATE INSTALLATION" -Level Info
     Write-Log "========================================" -Level Info
     Write-Log "PowerShell: $($PSVersionTable.PSVersion)" -Level Info
-    Write-Log "Categories: $($Categories -join ', ')" -Level Info
-    Write-Log "Max Updates: $MaxUpdates" -Level Info
-    Write-Log "Auto Reboot: $AutoReboot" -Level Info
+    Write-Log "Categories: Security, Critical, Updates" -Level Info
+    Write-Log "Max Updates: 100" -Level Info
+    Write-Log "Auto Reboot: Disabled" -Level Info
     
     # Check pending reboot
-    if (!$IgnorePendingReboot) {
-        $rebootStatus = Test-PendingReboot
-        if ($rebootStatus.Required) {
-            Write-Log "REBOOT PENDING from: $($rebootStatus.Reasons -join ', ')" -Level Warning
-            Write-Log "Consider rebooting first or use -IgnorePendingReboot" -Level Warning
-            
-            # Don't exit, just warn
-        }
+    $rebootStatus = Test-PendingReboot
+    if ($rebootStatus.Required) {
+        Write-Log "REBOOT PENDING from: $($rebootStatus.Reasons -join ', ')" -Level Warning
+        Write-Log "Proceeding with updates automatically." -Level Warning
     }
     
     # Install module if needed
@@ -223,18 +205,7 @@ try {
     Write-Log "`nScanning for updates..." -Level Info
     
     try {
-        # Build parameters for Get-WindowsUpdate
-        $getParams = @{
-            MicrosoftUpdate = $true
-            IgnoreReboot = $true
-        }
-        
-        # Add category filter if specified
-        if ($Categories.Count -gt 0) {
-            $getParams['Category'] = $Categories
-        }
-        
-        $updates = @(Get-WindowsUpdate @getParams -ErrorAction Stop)
+        $updates = @(Get-WindowsUpdate -MicrosoftUpdate -IgnoreReboot -Category "Security","Critical","Updates" -ErrorAction Stop)
         
         if ($updates.Count -eq 0) {
             Write-Log "No updates available" -Level Success
@@ -245,7 +216,7 @@ try {
         
         # Display update list
         $totalSizeMB = 0
-        $displayCount = [Math]::Min($updates.Count, $MaxUpdates)
+    $displayCount = [Math]::Min($updates.Count, 100)
         for ($i = 0; $i -lt $displayCount; $i++) {
             $update = $updates[$i]
             $sizeMB = [Math]::Round($update.Size / 1MB, 2)
@@ -253,8 +224,8 @@ try {
             Write-Log "  • $($update.Title) [$sizeMB MB]" -Level Info
         }
         
-        if ($updates.Count -gt $MaxUpdates) {
-            Write-Log "  (Showing first $MaxUpdates of $($updates.Count) total updates)" -Level Warning
+        if ($updates.Count -gt 100) {
+            Write-Log "  (Showing first 100 of $($updates.Count) total updates)" -Level Warning
         }
         
         Write-Log "Total download size: $([Math]::Round($totalSizeMB, 2)) MB" -Level Info
@@ -268,20 +239,7 @@ try {
     Write-Log "`nInstalling updates..." -Level Info
     
     try {
-        # Build install parameters
-        $installParams = @{
-            MicrosoftUpdate = $true
-            IgnoreReboot = $true
-            AcceptAll = $true
-            MaxSize = $MaxUpdates
-        }
-        
-        if ($Categories.Count -gt 0) {
-            $installParams['Category'] = $Categories
-        }
-        
-        # Perform installation
-        $installResults = Install-WindowsUpdate @installParams -ErrorAction Stop
+        $installResults = Install-WindowsUpdate -MicrosoftUpdate -IgnoreReboot -AcceptAll -MaxSize 100 -Category "Security","Critical","Updates" -ErrorAction Stop
         
         # Process results - handle both single result and array
         $results = @($installResults)
@@ -314,14 +272,7 @@ try {
         
         if ($rebootNeeded) {
             Write-Log "`nREBOOT REQUIRED to complete installation" -Level Warning
-            
-            if ($AutoReboot) {
-                Write-Log "Initiating automatic reboot in 60 seconds..." -Level Warning
-                Write-Log "Run 'shutdown /a' to cancel" -Level Warning
-                shutdown.exe /r /t 60 /c "Windows Updates completed - automatic reboot"
-            } else {
-                Write-Log "Please reboot manually to complete installation" -Level Warning
-            }
+            Write-Log "Please reboot manually to complete installation" -Level Warning
         }
         
         # Set success code if we installed something
@@ -347,5 +298,4 @@ try {
 } finally {
     Write-Log "`n========================================" -Level Info
     Write-Log "Log saved to: $LogFile" -Level Info
-    Stop-Transcript | Out-Null
 }

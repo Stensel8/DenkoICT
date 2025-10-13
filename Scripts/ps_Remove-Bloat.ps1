@@ -36,9 +36,6 @@
     - News and weather apps
     - Other unnecessary pre-installed apps
 
-.PARAMETER SkipLogging
-    Skip transcript logging to file.
-
 .EXAMPLE
     .\ps_Remove-Bloat.ps1
     
@@ -78,52 +75,22 @@
 #requires -Version 5.1
 
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'None')]
-param(
-    [switch]$SkipLogging
-)
 
 # --- Elevate if necessary ---
 $currentIdentity  = [Security.Principal.WindowsIdentity]::GetCurrent()
 $currentPrincipal = [Security.Principal.WindowsPrincipal]::new($currentIdentity)
 $isAdmin          = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-$invokedWithWhatIf = $PSBoundParameters.ContainsKey('WhatIf') -or $WhatIfPreference
 
 if (-not $isAdmin) {
-    if ($invokedWithWhatIf) {
-    Write-Log "Running in WhatIf mode without elevation. Some operations may be simulated or skipped due to limited permissions." -Level 'Warning'
-    } else {
     Write-Log "Elevation required. Restarting script with administrative privileges..." -Level 'Warning'
-
-        try {
-            $hostPath     = (Get-Process -Id $PID -ErrorAction Stop).Path
-            $argumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
-
-            foreach ($param in $PSBoundParameters.GetEnumerator()) {
-                switch ($param.Key) {
-                    'WhatIf' {
-                        if ($param.Value) {
-                            $argumentList += '-WhatIf'
-                        }
-                    }
-                    'SkipLogging' {
-                        if ($param.Value) {
-                            $argumentList += '-SkipLogging'
-                        }
-                    }
-                }
-            }
-
-            if ($MyInvocation.UnboundArguments) {
-                $argumentList += $MyInvocation.UnboundArguments
-            }
-
-            Start-Process -FilePath $hostPath -ArgumentList $argumentList -Verb RunAs | Out-Null
-        } catch {
-            Write-Log "Failed to restart with elevated privileges: $($_.Exception.Message)" -Level 'Error'
-        }
-
-        exit
+    try {
+        $hostPath     = (Get-Process -Id $PID -ErrorAction Stop).Path
+        $argumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+        Start-Process -FilePath $hostPath -ArgumentList $argumentList -Verb RunAs | Out-Null
+    } catch {
+        Write-Log "Failed to restart with elevated privileges: $($_.Exception.Message)" -Level 'Error'
     }
+    exit
 }
 
 Set-StrictMode -Version Latest
@@ -162,10 +129,8 @@ Write-Verbose "Loading custom functions from: $functionsPath"
 . $functionsPath
 
 # Initialize logging
-if (-not $SkipLogging) {
-    $Global:DenkoConfig.LogName = "ps_Remove-Bloat.ps1.log"
-    Start-Logging
-}
+$Global:DenkoConfig.LogName = "ps_Remove-Bloat.ps1.log"
+Start-Logging
 
 $script:ShouldExecute = $PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Remove Denko ICT bloatware packages and policies')
 
@@ -491,10 +456,6 @@ function Remove-ProvisionedByPattern {
 # --- Main Execution ---
 
 try {
-    if (-not $script:ShouldExecute) {
-        Write-Log 'WhatIf: Simulation mode - no changes will be applied.' -Level 'Warning'
-    }
-
     Write-Log "=== Bloatware Removal Started ===" -Level 'Info'
     $startTime = Get-Date
     Write-Log "User: $env:USERNAME" -Level 'Info'
@@ -559,20 +520,12 @@ try {
     foreach ($config in $registryConfigs) {
         try {
             if (-not (Test-Path $config.Path)) {
-                    if (-not $script:ShouldExecute) {
-                    Write-Log "WhatIf: Would create registry path: $($config.Path)" -Level 'Warning'
-                } else {
                     New-Item -Path $config.Path -Force | Out-Null
                     Write-Log "Created registry path: $($config.Path)" -Level 'Success'
-                }
             }
             
-                if (-not $script:ShouldExecute) {
-                Write-Log "WhatIf: Would set $($config.Name) to $($config.Value) at $($config.Path)" -Level 'Warning'
-            } else {
-                New-ItemProperty -Path $config.Path -Name $config.Name -Value $config.Value -PropertyType DWord -Force | Out-Null
-                Write-Log "Configured: $($config.Description)" -Level 'Success'
-            }
+            New-ItemProperty -Path $config.Path -Name $config.Name -Value $config.Value -PropertyType DWord -Force | Out-Null
+            Write-Log "Configured: $($config.Description)" -Level 'Success'
         } catch {
             Write-Log "Failed to configure $($config.Name): $($_.Exception.Message)" -Level 'Error'
         }
@@ -603,7 +556,5 @@ try {
     Write-Log "Critical error during bloatware removal: $($_.Exception.Message)" -Level 'Error'
     throw
 } finally {
-    if (-not $SkipLogging) {
-        Stop-Logging
-    }
+    Stop-Logging
 }

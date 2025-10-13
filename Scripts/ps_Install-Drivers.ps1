@@ -73,12 +73,7 @@
 #>
 
 [CmdletBinding()]
-param(
-    [switch]$SkipDell,
-    [switch]$SkipHP,
-    [int]$MaxDrivers = 10,
-    [switch]$SkipLogging
-)
+
 
 #requires -Version 5.1
 Set-StrictMode -Version Latest
@@ -93,9 +88,15 @@ if (-not (Test-Path $functionsPath)) {
 . $functionsPath
 
 # Initialize
+$transcriptActive = $false
 if (-not $SkipLogging) {
     $Global:DenkoConfig.LogName = "$($MyInvocation.MyCommand.Name).log"
-    Start-Logging
+    try {
+        Start-Logging
+        $transcriptActive = $true
+    } catch {
+        Write-Warning "Could not start logging: $_"
+    }
 }
 
 try {
@@ -142,13 +143,11 @@ try {
             )
             
             $result = Start-Process winget -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+            $exitCode = $result.ExitCode
+            $exitDesc = Get-WinGetExitCodeDescription -ExitCode $exitCode
             
-            if ($result.ExitCode -in @(0, -1978335189)) {
-                if ($result.ExitCode -eq -1978335189) {
-                    Write-Log "Dell Command Update already installed" -Level Info
-                } else {
-                    Write-Log "Dell Command Update installed successfully" -Level Success
-                }
+            if ($exitCode -in @(0, -1978335189, -1978335135)) {
+                Write-Log "Dell Command Update ready: $exitDesc" -Level Success
                 
                 # Find DCU executable
                 $dcuPaths = @(
@@ -180,10 +179,14 @@ try {
                         Write-Log "Dell update scan failed (exit: $($scanResult.ExitCode))" -Level Warning
                     }
                 } else {
-                    Write-Log "Dell Command Update not found at expected path" -Level Warning
+                    Write-Log "DCU executable not found" -Level Error
+                    Write-Log "Driver update process failed" -Level Error
+                    exit 1
                 }
             } else {
-                Write-Log "Dell Command Update installation failed (exit: $($result.ExitCode))" -Level Error
+                Write-Log "Dell Command Update installation failed: $exitDesc" -Level Error
+                Write-Log "Driver update process failed" -Level Error
+                exit 1
             }
         }
     }
@@ -212,11 +215,13 @@ try {
                 )
                 
                 $result = Start-Process winget -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+                $exitCode = $result.ExitCode
+                $exitDesc = Get-WinGetExitCodeDescription -ExitCode $exitCode
                 
-                if ($result.ExitCode -in @(0, -1978335189)) {
-                    Write-Log "HP Image Assistant installed successfully" -Level Success
+                if ($exitCode -in @(0, -1978335189, -1978335135)) {
+                    Write-Log "HP Image Assistant ready: $exitDesc" -Level Success
                 } else {
-                    Write-Log "HP Image Assistant installation failed (exit: $($result.ExitCode))" -Level Warning
+                    Write-Log "HP Image Assistant installation failed: $exitDesc" -Level Warning
                 }
                 
                 # Re-check for HPIA after installation attempt
@@ -266,6 +271,8 @@ try {
                 Remove-Item -Path $workPath -Recurse -Force -ErrorAction SilentlyContinue
             } else {
                 Write-Log "HP Image Assistant not found - unable to update drivers" -Level Error
+                Write-Log "Driver update process failed" -Level Error
+                exit 1
             }
         }
     }
@@ -281,7 +288,12 @@ try {
     Write-Log "Driver update failed: $_" -Level Error
     exit 1
 } finally {
-    if (-not $SkipLogging) {
-        Stop-Logging
+    if ($transcriptActive) {
+        try {
+            Stop-Logging
+        } catch {
+            # Transcript may already be stopped
+            Write-Warning "Could not stop logging cleanly: $_"
+        }
     }
 }
