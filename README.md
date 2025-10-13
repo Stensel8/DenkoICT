@@ -12,7 +12,7 @@
 
 [![PSScriptAnalyzer](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml)
 
-Automated Windows 11 Pro deployment tools. No manual clicking. Uses PowerShell 2.0 in WinPE, PowerShell 5.1 to bootstrap PowerShell 7, then PowerShell 7 for the actual deployment. Uses modern tools where possible. 
+Automated Windows 11 Pro deployment tools. No manual clicking. Uses PowerShell 2.0 in WinPE, PowerShell 5.1 to bootstrap PowerShell 7, then PowerShell 7 for the actual deployment. Uses modern tools where possible.
 
 ![Terminal console showing successful deployment progress with green checkmarks indicating completed steps: WinGet Installation, Driver Updates for HP and Dell, Applications, Bloatware Removal, Wallpaper Configuration, and Windows Updates. The summary shows 6 successful steps, 0 failures, and 0 skipped, with a log file location at C:\DenkoICT\Logs\ps_Deploy-Device.ps1.log](Docs/Deployment_Flow.png)
 
