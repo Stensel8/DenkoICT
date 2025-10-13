@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 4.0.0
+.VERSION 5.0.0
 
 .AUTHOR Sten Tijhuis
 
@@ -16,6 +16,7 @@
 [Version 2.1.0] - Added WinGet detection and module installation
 [Version 3.0.0] - Major update: Added network stability functions, WinGet/MSI exit code descriptions, graceful error handling, completion banners
 [Version 4.0.0] - Stability release: Consolidated network functions, refactored retry logic with do-while/until patterns, removed duplicates, simplified code
+[Version 5.0.0] - Minification: Removed unnecessary functions, merged Test-WinGet with Get-WinGetPath, merged Import-FunctionsFromGitHub into Get-RemoteScript, renamed deployment functions, converted MSI functions to comments
 #>
 
 #requires -Version 5.1
@@ -30,7 +31,7 @@
     validation, exit code interpretation, and system utilities.
 
 .NOTES
-    Version      : 4.0.0
+    Version      : 5.0.0
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     Requires     : PowerShell 5.1+
@@ -599,74 +600,121 @@ function Invoke-WithRetry {
 # WINGET FUNCTIONS
 # ============================================================================
 
-function Get-WinGetPath {
+function Test-WinGet {
     <#
     .SYNOPSIS
-        Finds the WinGet executable path.
+        Checks if WinGet is installed, functional, and returns path and version info.
 
     .DESCRIPTION
-        Locates winget.exe by checking common installation paths.
-        Useful for SYSTEM context or troubleshooting.
+        Unified WinGet detection function that locates winget.exe, verifies it works,
+        and includes exit code descriptions for troubleshooting. Replaces Get-WinGetPath
+        and Test-WinGetAvailable with a single comprehensive function.
+
+    .PARAMETER ReturnPath
+        If specified, returns the path to winget.exe instead of boolean.
+
+    .OUTPUTS
+        Returns PSCustomObject with WinGetPath, IsAvailable, Version properties.
+        If ReturnPath is specified and WinGet is not found, returns $null.
+
+    .EXAMPLE
+        $winget = Test-WinGet
+        if ($winget.IsAvailable) {
+            Write-Host "WinGet v$($winget.Version) found at $($winget.WinGetPath)"
+        }
+
+    .NOTES
+        WinGet Exit Codes:
+        0 = Success
+        -1978335231 = Internal Error
+        -1978335230 = Invalid command line arguments
+        -1978335229 = Executing command failed
+        -1978335226 = Running ShellExecute failed (installer failed)
+        -1978335224 = Downloading installer failed
+        -1978335216 = No applicable installer for the current system
+        -1978335215 = Installer hash mismatch
+        -1978335212 = No packages found
+        -1978335210 = Multiple packages found
+        -1978335207 = Command requires administrator privileges
+        -1978335189 = No applicable update found (already up-to-date)
+        -1978335188 = Upgrade all completed with failures
+        -1978335174 = Operation blocked by Group Policy
+        -1978335135 = Package already installed
+        -1978334975 = Application currently running
+        -1978334974 = Another installation in progress
+        -1978334973 = File in use
+        -1978334972 = Missing dependency
+        -1978334971 = Disk full
+        -1978334970 = Insufficient memory
+        -1978334969 = No network connection
+        -1978334967 = Reboot required to finish
+        -1978334966 = Reboot required to install
+        -1978334964 = Cancelled by user
+        -1978334963 = Another version already installed
+        -1978334962 = Downgrade attempt (higher version installed)
+        -1978334961 = Blocked by policy
+        -1978334960 = Failed to install dependencies
     #>
     [CmdletBinding()]
-    [OutputType([string])]
-    param()
-
-    # Try to find winget in PATH first
-    $wingetCmd = Get-Command winget.exe -ErrorAction SilentlyContinue
-    if ($wingetCmd) {
-        return $wingetCmd.Source
-    }
-
-    # Search WindowsApps folder
-    $wingetPaths = @(
-        "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe",
-        "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe"
+    [OutputType([PSCustomObject])]
+    param(
+        [switch]$ReturnPath
     )
 
-    foreach ($path in $wingetPaths) {
-        $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
-        if ($resolved) {
-            if ($resolved -is [array]) {
-                $resolved = $resolved | Sort-Object {
-                    [version]($_.Path -replace '^.*_(\d+\.\d+\.\d+\.\d+)_.*', '$1')
-                } -Descending | Select-Object -First 1
-            }
-            return $resolved.Path
-        }
+    $result = [PSCustomObject]@{
+        WinGetPath = $null
+        IsAvailable = $false
+        Version = $null
     }
-
-    return $null
-}
-
-function Test-WinGetAvailable {
-    <#
-    .SYNOPSIS
-        Checks if WinGet is installed and functional.
-    #>
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param()
 
     try {
-        $wingetPath = Get-WinGetPath
-        if (-not $wingetPath) {
+        # Try to find winget in PATH first
+        $wingetCmd = Get-Command winget.exe -ErrorAction SilentlyContinue
+        if ($wingetCmd) {
+            $result.WinGetPath = $wingetCmd.Source
+        } else {
+            # Search WindowsApps folder
+            $wingetPaths = @(
+                "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe",
+                "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe"
+            )
+
+            foreach ($path in $wingetPaths) {
+                $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
+                if ($resolved) {
+                    if ($resolved -is [array]) {
+                        $resolved = $resolved | Sort-Object {
+                            [version]($_.Path -replace '^.*_(\d+\.\d+\.\d+\.\d+)_.*', '$1')
+                        } -Descending | Select-Object -First 1
+                    }
+                    $result.WinGetPath = $resolved.Path
+                    break
+                }
+            }
+        }
+
+        # If path found, test if it works
+        if ($result.WinGetPath) {
+            $versionOutput = & $result.WinGetPath --version 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $result.IsAvailable = $true
+                $result.Version = $versionOutput -replace '^v', ''
+                Write-Log "WinGet is available - Version: $($result.Version)" -Level Verbose
+            } else {
+                Write-Log "WinGet found but not functional (exit code: $LASTEXITCODE)" -Level Debug
+            }
+        } else {
             Write-Log "WinGet executable not found" -Level Debug
-            return $false
         }
-
-        $null = & $wingetPath --version 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Log "WinGet is available" -Level Verbose
-            return $true
-        }
-
-        Write-Log "WinGet found but not functional (exit code: $LASTEXITCODE)" -Level Debug
-        return $false
     } catch {
-        Write-Log "WinGet availability check failed: $_" -Level Debug
-        return $false
+        Write-Log "WinGet check failed: $_" -Level Debug
     }
+
+    # Return based on parameter
+    if ($ReturnPath) {
+        return $result.WinGetPath
+    }
+    return $result
 }
 
 function Get-WinGetExitCodeDescription {
@@ -731,6 +779,28 @@ function Get-MSIExitCodeDescription {
     .DESCRIPTION
         Provides detailed error descriptions for Windows Installer (MSI) exit codes.
         Useful for logging and troubleshooting MSI installation issues.
+
+    .NOTES
+        MSI Exit Codes Reference:
+        0 = ERROR_SUCCESS - Action completed successfully
+        1602 = ERROR_INSTALL_USEREXIT - User cancelled installation
+        1603 = ERROR_INSTALL_FAILURE - Fatal error during installation
+        1608 = ERROR_UNKNOWN_PROPERTY - Unknown property
+        1609 = ERROR_INVALID_HANDLE_STATE - Handle is in an invalid state
+        1614 = ERROR_PRODUCT_UNINSTALLED - Product is uninstalled
+        1618 = ERROR_INSTALL_ALREADY_RUNNING - Another installation is already in progress
+        1619 = ERROR_INSTALL_PACKAGE_OPEN_FAILED - Installation package could not be opened
+        1620 = ERROR_INSTALL_PACKAGE_INVALID - Installation package is invalid
+        1624 = ERROR_INSTALL_TRANSFORM_FAILURE - Error applying transforms
+        1635 = ERROR_PATCH_PACKAGE_OPEN_FAILED - Patch package could not be opened
+        1636 = ERROR_PATCH_PACKAGE_INVALID - Patch package is invalid
+        1638 = ERROR_PRODUCT_VERSION - Another version of this product is already installed
+        1639 = ERROR_INVALID_COMMAND_LINE - Invalid command line argument
+        1640 = ERROR_INSTALL_REMOTE_DISALLOWED - Installation from Terminal Server not permitted
+        1641 = ERROR_SUCCESS_REBOOT_INITIATED - The installer has started a reboot
+        1644 = ERROR_INSTALL_TRANSFORM_REJECTED - Customizations not permitted by policy
+        1707 = ERROR_SUCCESS_PRODUCT_INSTALLED - Product already installed
+        3010 = ERROR_SUCCESS_REBOOT_REQUIRED - A reboot is required to complete the install
     #>
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
@@ -783,27 +853,168 @@ function Get-MSIExitCodeDescription {
 function Get-RemoteScript {
     <#
     .SYNOPSIS
-        Downloads a script from a URL with retry logic and optional hash verification.
+        Downloads scripts from GitHub with retry logic and optional hash verification.
 
     .DESCRIPTION
-        Robust download function using do-while pattern for retries.
+        Enhanced download function that can download single or multiple scripts.
+        Uses BITS transfer for modern, fast downloading. Falls back to WebClient if needed.
         Preserves UTF-8 encoding for PowerShell compatibility.
         Supports SHA256 hash verification for security.
+        Can automatically download all missing deployment scripts from GitHub.
+
+    .PARAMETER ScriptName
+        Name of the script to download. If not specified, checks for all missing scripts.
+
+    .PARAMETER ScriptUrl
+        Full URL to download script from. If not specified, builds from GitHub repo.
+
+    .PARAMETER SavePath
+        Local path to save the script. If not specified, saves to Download directory.
+
+    .PARAMETER ExpectedHash
+        Optional SHA256 hash for verification.
+
+    .PARAMETER DownloadAll
+        Downloads all missing scripts from the GitHub repository.
+
+    .PARAMETER BaseUrl
+        Base URL for GitHub repository (default: main branch).
+
+    .PARAMETER MaxRetries
+        Maximum retry attempts (default: 3).
+
+    .PARAMETER TimeoutSeconds
+        Timeout for each download attempt (default: 30).
+
+    .EXAMPLE
+        Get-RemoteScript -ScriptName "ps_Custom-Functions.ps1"
+        Downloads the custom functions script.
+
+    .EXAMPLE
+        Get-RemoteScript -DownloadAll
+        Downloads all missing deployment scripts from GitHub.
+
+    .NOTES
+        Scripts that will be downloaded when using -DownloadAll:
+        - ps_Custom-Functions.ps1
+        - ps_Deploy-Device.ps1
+        - ps_DisableFirstLogonAnimation.ps1
+        - ps_Get-InstalledSoftware.ps1
+        - ps_Get-SerialNumber.ps1
+        - ps_Init-Deployment.ps1
+        - ps_Install-Applications.ps1
+        - ps_Install-Drivers.ps1
+        - ps_Install-MSI.ps1
+        - ps_Install-PowerShell7.ps1
+        - ps_Install-WindowsUpdates.ps1
+        - ps_Install-Winget.ps1
+        - ps_OOBE-Requirement.ps1
+        - ps_Remove-Bloat.ps1
+        - ps_Set-Wallpaper.ps1
+        - ps_Update-AllApps.ps1
     #>
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'Single')]
     [OutputType([bool])]
     param(
-        [Parameter(Mandatory)]
+        [Parameter(ParameterSetName = 'Single')]
+        [string]$ScriptName,
+
+        [Parameter(ParameterSetName = 'Single')]
         [string]$ScriptUrl,
 
-        [Parameter(Mandatory)]
+        [Parameter(ParameterSetName = 'Single')]
         [string]$SavePath,
 
+        [Parameter(ParameterSetName = 'Single')]
         [string]$ExpectedHash,
 
+        [Parameter(ParameterSetName = 'All', Mandatory)]
+        [switch]$DownloadAll,
+
+        [string]$BaseUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts",
+
+        [string]$DownloadDir = 'C:\DenkoICT\Download',
+
         [int]$MaxRetries = 3,
+
         [int]$TimeoutSeconds = 30
     )
+
+    # List of all deployment scripts
+    $allScripts = @(
+        'ps_Custom-Functions.ps1'
+        'ps_Deploy-Device.ps1'
+        'ps_DisableFirstLogonAnimation.ps1'
+        'ps_Get-InstalledSoftware.ps1'
+        'ps_Get-SerialNumber.ps1'
+        'ps_Init-Deployment.ps1'
+        'ps_Install-Applications.ps1'
+        'ps_Install-Drivers.ps1'
+        'ps_Install-MSI.ps1'
+        'ps_Install-PowerShell7.ps1'
+        'ps_Install-WindowsUpdates.ps1'
+        'ps_Install-Winget.ps1'
+        'ps_OOBE-Requirement.ps1'
+        'ps_Remove-Bloat.ps1'
+        'ps_Set-Wallpaper.ps1'
+        'ps_Update-AllApps.ps1'
+    )
+
+    # Ensure download directory exists
+    if (-not (Test-Path $DownloadDir)) {
+        $null = New-Item -Path $DownloadDir -ItemType Directory -Force
+    }
+
+    # Handle DownloadAll mode
+    if ($DownloadAll) {
+        Write-Log "Checking for missing scripts in $DownloadDir" -Level Info
+        $missingScripts = @()
+
+        foreach ($script in $allScripts) {
+            $localPath = Join-Path $DownloadDir $script
+            if (-not (Test-Path $localPath)) {
+                $missingScripts += $script
+            }
+        }
+
+        if ($missingScripts.Count -eq 0) {
+            Write-Log "All scripts are present, nothing to download" -Level Success
+            return $true
+        }
+
+        Write-Log "Found $($missingScripts.Count) missing script(s), downloading..." -Level Info
+        $successCount = 0
+        $failCount = 0
+
+        foreach ($script in $missingScripts) {
+            $url = "$BaseUrl/$script"
+            $path = Join-Path $DownloadDir $script
+
+            if (Get-RemoteScript -ScriptUrl $url -SavePath $path -MaxRetries $MaxRetries) {
+                $successCount++
+            } else {
+                $failCount++
+                Write-Log "Failed to download $script" -Level Warning
+            }
+        }
+
+        Write-Log "Downloaded $successCount script(s), $failCount failed" -Level Info
+        return ($failCount -eq 0)
+    }
+
+    # Handle single script download
+    if (-not $ScriptUrl -and $ScriptName) {
+        $ScriptUrl = "$BaseUrl/$ScriptName"
+    }
+
+    if (-not $SavePath -and $ScriptName) {
+        $SavePath = Join-Path $DownloadDir $ScriptName
+    }
+
+    if (-not $ScriptUrl -or -not $SavePath) {
+        Write-Log "Either ScriptUrl and SavePath or ScriptName must be provided" -Level Error
+        return $false
+    }
 
     $directory = Split-Path $SavePath -Parent
     if (-not (Test-Path $directory)) {
@@ -818,12 +1029,21 @@ function Get-RemoteScript {
         try {
             Write-Log "Downloading from $ScriptUrl (attempt $attempt/$MaxRetries)" -Level Info
 
-            $webClient = New-Object System.Net.WebClient
-            $webClient.Encoding = [System.Text.Encoding]::UTF8
-            $content = $webClient.DownloadString($ScriptUrl)
+            # Try BITS transfer first (modern and fast)
+            try {
+                Import-Module BitsTransfer -ErrorAction Stop
+                Start-BitsTransfer -Source $ScriptUrl -Destination $SavePath -ErrorAction Stop
+                Write-Log "Downloaded using BITS transfer" -Level Verbose
+            } catch {
+                # Fallback to WebClient
+                Write-Log "BITS transfer failed, using WebClient..." -Level Debug
+                $webClient = New-Object System.Net.WebClient
+                $webClient.Encoding = [System.Text.Encoding]::UTF8
+                $content = $webClient.DownloadString($ScriptUrl)
 
-            # Write with UTF-8 no-BOM encoding
-            [System.IO.File]::WriteAllText($SavePath, $content, (New-Object System.Text.UTF8Encoding $false))
+                # Write with UTF-8 no-BOM encoding
+                [System.IO.File]::WriteAllText($SavePath, $content, (New-Object System.Text.UTF8Encoding $false))
+            }
 
             # Verify hash if provided
             if ($ExpectedHash) {
@@ -841,7 +1061,7 @@ function Get-RemoteScript {
                 Write-Log "Hash verification successful" -Level Success
             }
 
-            Write-Log "Download successful" -Level Success
+            Write-Log "Download successful: $(Split-Path $SavePath -Leaf)" -Level Success
             return $true
         } catch {
             if ($attempt -ge $MaxRetries) {
@@ -857,132 +1077,11 @@ function Get-RemoteScript {
     return $false
 }
 
-function Import-FunctionsFromGitHub {
-    <#
-    .SYNOPSIS
-        Downloads and imports ps_Custom-Functions.ps1 from GitHub or uses local copy.
-
-    .DESCRIPTION
-        Attempts to use local copy first, falls back to GitHub download.
-        Validates syntax before importing.
-    #>
-    [CmdletBinding()]
-    param(
-        [string]$GitHubUrl = "https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Custom-Functions.ps1",
-        [string]$LocalScriptDir = $PSScriptRoot,
-        [string]$DownloadDir = 'C:\DenkoICT\Download'
-    )
-
-    $localFunctions = Join-Path $LocalScriptDir "ps_Custom-Functions.ps1"
-    $downloadPath = Join-Path $DownloadDir "ps_Custom-Functions.ps1"
-
-    $sourceFile = $null
-
-    # Try local first
-    if (Test-Path $localFunctions) {
-        Write-Log "Using local custom functions: $localFunctions" -Level Info
-        $sourceFile = $localFunctions
-    } else {
-        # Download from GitHub
-        Write-Log "Downloading custom functions from GitHub..." -Level Info
-
-        if (-not (Test-Path $DownloadDir)) {
-            $null = New-Item -Path $DownloadDir -ItemType Directory -Force
-        }
-
-        if (Get-RemoteScript -ScriptUrl $GitHubUrl -SavePath $downloadPath) {
-            Write-Log "Downloaded custom functions successfully" -Level Success
-            $sourceFile = $downloadPath
-        } else {
-            throw "Failed to download custom functions from GitHub"
-        }
-    }
-
-    # Validate syntax
-    $errors = $null
-    $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $sourceFile -Raw), [ref]$errors)
-
-    if ($errors.Count -gt 0) {
-        Write-Log "Syntax errors in custom functions file:" -Level Error
-        foreach ($err in $errors) {
-            Write-Log "  Line $($err.Token.StartLine): $($err.Message)" -Level Error
-        }
-        throw "Custom functions file contains syntax errors"
-    }
-
-    # Import the file
-    . $sourceFile
-    Write-Log "Custom functions imported successfully" -Level Success
-}
-
-# ============================================================================
-# ERROR HANDLING & EXECUTION
-# ============================================================================
-
-function Invoke-SafeScriptBlock {
-    <#
-    .SYNOPSIS
-        Executes a script block with graceful error handling.
-
-    .DESCRIPTION
-        Wraps script block execution with try-catch to enable graceful degradation.
-        Logs errors but doesn't throw, allowing deployment to continue on non-critical failures.
-    #>
-    [CmdletBinding()]
-    [OutputType([PSCustomObject])]
-    param(
-        [Parameter(Mandatory)]
-        [scriptblock]$ScriptBlock,
-
-        [Parameter(Mandatory)]
-        [string]$OperationName,
-
-        [switch]$Critical,
-
-        [hashtable]$Parameters
-    )
-
-    Write-Log "Starting: $OperationName" -Level Info
-
-    try {
-        if ($Parameters) {
-            $result = & $ScriptBlock @Parameters
-        } else {
-            $result = & $ScriptBlock
-        }
-
-        Write-Log "Completed: $OperationName" -Level Success
-        return [PSCustomObject]@{
-            Success = $true
-            Result = $result
-            Error = $null
-        }
-    } catch {
-        $errorMsg = $_.Exception.Message
-        Write-Log "Failed: $OperationName - $errorMsg" -Level Error
-
-        if ($_.ScriptStackTrace) {
-            Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level Debug
-        }
-
-        if ($Critical) {
-            throw "Critical operation failed: $OperationName - $errorMsg"
-        }
-
-        Write-Log "Continuing despite error (non-critical operation)" -Level Warning
-        return [PSCustomObject]@{
-            Success = $false
-            Result = $null
-            Error = $errorMsg
-        }
-    }
-}
-
 # ============================================================================
 # DEPLOYMENT TRACKING FUNCTIONS
 # ============================================================================
 
-function Set-DeploymentStepStatus {
+function Set-DeploymentStatus {
     <#
     .SYNOPSIS
         Records deployment step status in registry.
@@ -1051,7 +1150,7 @@ function Set-DeploymentStepStatus {
     }
 }
 
-function Get-DeploymentStepStatus {
+function Get-DeploymentStatus {
     <#
     .SYNOPSIS
         Retrieves deployment step status from registry.
@@ -1090,232 +1189,66 @@ function Get-DeploymentStepStatus {
     }
 }
 
-function Get-AllDeploymentSteps {
+# ============================================================================
+# CLEANUP INFORMATION
+# ============================================================================
+
+function Show-CleanupInformation {
     <#
     .SYNOPSIS
-        Retrieves all deployment step statuses from registry.
+        Displays information about where deployment files, logs, and registry keys are located.
 
     .DESCRIPTION
-        Returns an array of all recorded deployment steps with their status information.
+        Shows paths to all deployment artifacts so users can manually clean them up if desired.
+        Displays both file system paths and registry paths.
     #>
     [CmdletBinding()]
-    [OutputType([PSCustomObject[]])]
     param()
-
-    $deploymentKey = 'HKLM:\SOFTWARE\DenkoICT\Deployment\Steps'
-
-    try {
-        if (-not (Test-Path $deploymentKey)) {
-            return @()
-        }
-
-        $steps = Get-ChildItem -Path $deploymentKey -ErrorAction Stop
-        $results = @()
-
-        foreach ($step in $steps) {
-            $stepName = $step.PSChildName
-            $stepStatus = Get-DeploymentStepStatus -StepName $stepName
-            if ($stepStatus) {
-                $results += $stepStatus
-            }
-        }
-
-        return $results
-    } catch {
-        Write-Log "Failed to retrieve deployment steps: $_" -Level Warning
-        return @()
-    }
-}
-
-function Clear-DeploymentHistory {
-    <#
-    .SYNOPSIS
-        Clears all deployment step history from registry.
-
-    .DESCRIPTION
-        Removes all deployment step tracking data. Useful for starting fresh deployments.
-    #>
-    [CmdletBinding(SupportsShouldProcess)]
-    param()
-
-    $deploymentKey = 'HKLM:\SOFTWARE\DenkoICT\Deployment\Steps'
-
-    try {
-        if (Test-Path $deploymentKey) {
-            if ($PSCmdlet.ShouldProcess($deploymentKey, "Remove deployment history")) {
-                Remove-Item -Path $deploymentKey -Recurse -Force -ErrorAction Stop
-                Write-Log "Cleared deployment history" -Level Info
-            }
-        }
-    } catch {
-        Write-Log "Failed to clear deployment history: $_" -Level Warning
-    }
-}
-
-function Show-DeploymentSummary {
-    <#
-    .SYNOPSIS
-        Displays comprehensive deployment summary from registry.
-
-    .DESCRIPTION
-        Reads all deployment steps from registry and displays a detailed
-        summary with status, timestamps, and error information.
-    #>
-    [CmdletBinding()]
-    param(
-        [string]$Title = "DENKO ICT DEPLOYMENT SUMMARY"
-    )
 
     $border = "=" * 80
-    $steps = Get-AllDeploymentSteps
 
     Write-Log "" -Level Info
     Write-Log $border -Level Info
-    Write-Log "  $Title" -Level Info
+    Write-Log "  DEPLOYMENT CLEANUP INFORMATION" -Level Info
     Write-Log $border -Level Info
     Write-Log "" -Level Info
 
-    if ($steps.Count -eq 0) {
-        Write-Log "  No deployment steps recorded." -Level Warning
-        Write-Log "" -Level Info
-        Write-Log $border -Level Info
-        return
-    }
-
-    # Calculate statistics
-    $successCount = @($steps | Where-Object { $_.Status -eq 'Success' }).Count
-    $failedCount = @($steps | Where-Object { $_.Status -eq 'Failed' }).Count
-    $skippedCount = @($steps | Where-Object { $_.Status -eq 'Skipped' }).Count
-    $totalSteps = $steps.Count
-
-    # Display statistics
-    Write-Log "  Total Steps: $totalSteps" -Level Info
-    Write-Log "  Successful: $successCount" -Level Success
-    if ($failedCount -gt 0) {
-        Write-Log "  Failed: $failedCount" -Level Error
-    }
-    if ($skippedCount -gt 0) {
-        Write-Log "  Skipped: $skippedCount" -Level Warning
-    }
+    Write-Log "  FILE SYSTEM LOCATIONS:" -Level Info
+    Write-Log "  ---------------------" -Level Info
+    Write-Log "" -Level Info
+    Write-Log "  Logs Directory:" -Level Info
+    Write-Log "    C:\DenkoICT\Logs" -Level Verbose
+    Write-Log "    (Open in Explorer: explorer.exe C:\DenkoICT\Logs)" -Level Verbose
     Write-Log "" -Level Info
 
-    # Display detailed step information
-    Write-Log "  DETAILED STEP RESULTS:" -Level Info
-    Write-Log ("  " + ("-" * 76)) -Level Info
-
-    foreach ($step in $steps) {
-        $statusSymbol = switch ($step.Status) {
-            'Success' { '[OK]' }
-            'Failed'  { '[FAIL]' }
-            'Skipped' { '[SKIP]' }
-            'Running' { '[RUN]' }
-            default   { '[?]' }
-        }
-
-        $statusLevel = switch ($step.Status) {
-            'Success' { 'Success' }
-            'Failed'  { 'Error' }
-            'Skipped' { 'Warning' }
-            'Running' { 'Info' }
-            default   { 'Info' }
-        }
-
-        $stepLine = "  $statusSymbol $($step.StepName)"
-        Write-Log $stepLine -Level $statusLevel
-
-        if ($step.Timestamp) {
-            Write-Log "        Time: $($step.Timestamp)" -Level Verbose
-        }
-
-        if ($step.Version) {
-            Write-Log "        Version: $($step.Version)" -Level Verbose
-        }
-
-        if ($null -ne $step.ExitCode -and $step.ExitCode -ne 0) {
-            Write-Log "        Exit Code: $($step.ExitCode)" -Level Warning
-        }
-
-        if ($step.ErrorMessage) {
-            Write-Log "        Error: $($step.ErrorMessage)" -Level Error
-        }
-    }
-
-    Write-Log "" -Level Info
-    Write-Log ("  " + ("-" * 76)) -Level Info
+    Write-Log "  Downloads Directory:" -Level Info
+    Write-Log "    C:\DenkoICT\Download" -Level Verbose
+    Write-Log "    (Open in Explorer: explorer.exe C:\DenkoICT\Download)" -Level Verbose
     Write-Log "" -Level Info
 
-    # Overall status message
-    if ($failedCount -eq 0 -and $skippedCount -eq 0) {
-        Write-Log "  ALL DEPLOYMENT STEPS COMPLETED SUCCESSFULLY!" -Level Success
-        Write-Log "  Your device is fully configured and ready to use." -Level Info
-    } elseif ($failedCount -eq 0) {
-        Write-Log "  Deployment completed successfully with some steps skipped." -Level Success
-        Write-Log "  Your device is ready to use." -Level Info
-        if ($skippedCount -gt 0) {
-            Write-Log "  Some optional features may be unavailable (check skipped items above)." -Level Warning
-        }
-    } else {
-        Write-Log "  Deployment completed with $failedCount failure(s)." -Level Warning
-        Write-Log "  Your device may not be fully configured." -Level Warning
-        Write-Log "  Please review the failed steps above and check the log file." -Level Warning
-    }
-
+    Write-Log "  REGISTRY LOCATIONS:" -Level Info
+    Write-Log "  ------------------" -Level Info
     Write-Log "" -Level Info
-    Write-Log "  Deployment status stored in: HKLM:\SOFTWARE\DenkoICT\Deployment\Steps" -Level Verbose
+    Write-Log "  Deployment Status:" -Level Info
+    Write-Log "    HKLM:\SOFTWARE\DenkoICT\Deployment\Steps" -Level Verbose
+    Write-Log "    (Open in RegEdit: navigate to HKEY_LOCAL_MACHINE\SOFTWARE\DenkoICT\Deployment\Steps)" -Level Verbose
     Write-Log "" -Level Info
-    Write-Log $border -Level Info
-}
 
-function Show-CompletionBanner {
-    <#
-    .SYNOPSIS
-        Displays a friendly completion banner with deployment results.
-
-    .DESCRIPTION
-        Shows a formatted completion message with success/failure statistics
-        and next steps for the user. This is a simplified version.
-        Use Show-DeploymentSummary for detailed registry-based reporting.
-    #>
-    [CmdletBinding()]
-    param(
-        [int]$SuccessCount = 0,
-        [int]$FailedCount = 0,
-        [int]$SkippedCount = 0,
-        [string]$Title = "Deployment Complete"
-    )
-
-    $border = "=" * 70
-    $totalSteps = $SuccessCount + $FailedCount + $SkippedCount
-
+    Write-Log "  Intune Tracking:" -Level Info
+    Write-Log "    HKLM:\SOFTWARE\DenkoICT\Intune" -Level Verbose
+    Write-Log "    (Open in RegEdit: navigate to HKEY_LOCAL_MACHINE\SOFTWARE\DenkoICT\Intune)" -Level Verbose
     Write-Log "" -Level Info
-    Write-Log $border -Level Info
-    Write-Log "  $Title" -Level Info
+
+    Write-Log "  TO CLEAN UP MANUALLY:" -Level Warning
+    Write-Log "  --------------------" -Level Warning
+    Write-Log "" -Level Info
+    Write-Log "  1. Delete directories:" -Level Info
+    Write-Log "     Remove-Item -Path 'C:\DenkoICT' -Recurse -Force" -Level Verbose
+    Write-Log "" -Level Info
+    Write-Log "  2. Delete registry keys:" -Level Info
+    Write-Log "     Remove-Item -Path 'HKLM:\SOFTWARE\DenkoICT' -Recurse -Force" -Level Verbose
+    Write-Log "" -Level Info
+
     Write-Log $border -Level Info
     Write-Log "" -Level Info
-    Write-Log "  Total Steps: $totalSteps" -Level Info
-    Write-Log "  Successful: $SuccessCount" -Level Success
-
-    if ($FailedCount -gt 0) {
-        Write-Log "  Failed: $FailedCount" -Level Error
-    }
-
-    if ($SkippedCount -gt 0) {
-        Write-Log "  Skipped: $SkippedCount" -Level Warning
-    }
-
-    Write-Log "" -Level Info
-
-    if ($FailedCount -eq 0 -and $SkippedCount -eq 0) {
-        Write-Log "  All deployment steps completed successfully!" -Level Success
-        Write-Log "  Your device is ready to use." -Level Info
-    } elseif ($FailedCount -eq 0) {
-        Write-Log "  Deployment completed with some steps skipped." -Level Success
-        Write-Log "  Your device is ready, but some optional features may be unavailable." -Level Warning
-    } else {
-        Write-Log "  Deployment completed with some failures." -Level Warning
-        Write-Log "  Please review the log file for details." -Level Warning
-    }
-
-    Write-Log "" -Level Info
-    Write-Log $border -Level Info
 }
