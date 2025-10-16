@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
-	<!--https://schneegans.de/windows/unattend-generator/?LanguageMode=Unattended&UILanguage=nl-NL&Locale=nl-NL&Keyboard=00020409&GeoLocation=176&ProcessorArchitecture=amd64&ProcessorArchitecture=arm64&ComputerNameMode=Script&ComputerNameScript=%23+Get+the+serialnumber+of+the+machine+via+the+CIMinstance+cmdlet%0D%0A%24serial+%3D+%28Get-CimInstance+Win32_BIOS+-ErrorAction+Stop%29.SerialNumber%0D%0A%0D%0A%23+Format+the+serialnumber+to+give+back+the+last+4+characters+prefixed+with+%27PC-%27%0D%0Areturn+%27PC-%7B0%7D%27+-f+%24serial.Substring%28%24serial.Length+-+4%29%0D%0A&CompactOsMode=Default&TimeZoneMode=Explicit&TimeZone=W.+Europe+Standard+Time&PartitionMode=Interactive&DiskAssertionMode=Skip&WindowsEditionMode=Generic&WindowsEdition=pro&InstallFromMode=Automatic&PEMode=Default&UserAccountMode=Unattended&AccountName0=DenkoAdmin&AccountDisplayName0=DenkoAdmin&AccountPassword0=&AccountGroup0=Administrators&AutoLogonMode=Own&PasswordExpirationMode=Unlimited&LockoutMode=Default&HideFiles=Hidden&ShowFileExtensions=true&LaunchToThisPC=true&ShowEndTask=true&TaskbarSearch=Label&TaskbarIconsMode=Custom&TaskbarIconsXml=%3CLayoutModificationTemplate+xmlns%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FLayoutModification%22%0D%0A++xmlns%3Adefaultlayout%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FFullDefaultLayout%22%0D%0A++xmlns%3Ataskbar%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FTaskbarLayout%22+Version%3D%221%22%3E%0D%0A++%3CCustomTaskbarLayoutCollection+PinListPlacement%3D%22Replace%22%3E%0D%0A++++%3Cdefaultlayout%3ATaskbarLayout%3E%0D%0A++++++%3Ctaskbar%3ATaskbarPinList%3E%0D%0A++++++++%3Ctaskbar%3ADesktopApp+DesktopApplicationID%3D%22Microsoft.Windows.Explorer%22+%2F%3E%0D%0A++++++++%3Ctaskbar%3ADesktopApp+DesktopApplicationLinkPath%3D%22%25ProgramFiles%28x86%29%25%5CMicrosoft%5CEdge%5CApplication%5Cmsedge.exe%22+%2F%3E%0D%0A++++++%3C%2Ftaskbar%3ATaskbarPinList%3E%0D%0A++++%3C%2Fdefaultlayout%3ATaskbarLayout%3E%0D%0A++%3C%2FCustomTaskbarLayoutCollection%3E%0D%0A%3C%2FLayoutModificationTemplate%3E%0D%0A&DisableWidgets=true&DisableBingResults=true&StartTilesMode=Custom&StartTilesXml=%3CLayoutModificationTemplate+xmlns%3Adefaultlayout%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FFullDefaultLayout%22+xmlns%3Astart%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FStartLayout%22+Version%3D%221%22+xmlns%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FLayoutModification%22%3E%0D%0A++%3CLayoutOptions+StartTileGroupCellWidth%3D%226%22+%2F%3E%0D%0A++%3CDefaultLayoutOverride%3E%0D%0A++++%3CStartLayoutCollection%3E%0D%0A++++++%3Cdefaultlayout%3AStartLayout+GroupCellWidth%3D%226%22%3E%0D%0A++++++++%3Cstart%3AGroup+Name%3D%22%22%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%222%22+Row%3D%220%22+DesktopApplicationLinkPath%3D%22%25APPDATA%25%5CMicrosoft%5CWindows%5CStart+Menu%5CPrograms%5CSystem+Tools%5CFile+Explorer.lnk%22+%2F%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%220%22+Row%3D%220%22+DesktopApplicationLinkPath%3D%22%25ALLUSERSPROFILE%25%5CMicrosoft%5CWindows%5CStart+Menu%5CPrograms%5CMicrosoft+Edge.lnk%22+%2F%3E%0D%0A++++++++%3C%2Fstart%3AGroup%3E%0D%0A++++++%3C%2Fdefaultlayout%3AStartLayout%3E%0D%0A++++%3C%2FStartLayoutCollection%3E%0D%0A++%3C%2FDefaultLayoutOverride%3E%0D%0A%3C%2FLayoutModificationTemplate%3E%0D%0A&StartPinsMode=Custom&StartPinsJson=%7B%0D%0A++%22pinnedList%22%3A+%5B%0D%0A++++%7B%0D%0A++++++%22desktopAppLink%22%3A+%22%25APPDATA%25%5C%5CMicrosoft%5C%5CWindows%5C%5CStart+Menu%5C%5CPrograms%5C%5CFile+Explorer.lnk%22%0D%0A++++%7D%2C%0D%0A++++%7B%0D%0A++++++%22desktopAppLink%22%3A+%22%25ALLUSERSPROFILE%25%5C%5CMicrosoft%5C%5CWindows%5C%5CStart+Menu%5C%5CPrograms%5C%5CMicrosoft+Edge.lnk%22%0D%0A++++%7D%0D%0A++%5D%0D%0A%7D%0D%0A&DisableFastStartup=true&EnableLongPaths=true&DisableLastAccess=true&DisableAppSuggestions=true&HideEdgeFre=true&DisableEdgeStartupBoost=true&DeleteWindowsOld=true&EffectsMode=Default&DesktopIconsMode=Custom&IconRecycleBin=true&IconThisPC=true&StartFoldersMode=Custom&StartFolderFileExplorer=true&StartFolderSettings=true&WifiMode=Skip&ExpressSettings=DisableAll&LockKeysMode=Skip&StickyKeysMode=Disabled&ColorMode=Custom&SystemColorTheme=Dark&AppsColorTheme=Dark&AccentColor=%230078d4&WallpaperMode=Default&LockScreenMode=Default&Remove3DViewer=true&RemoveBingSearch=true&RemoveClipchamp=true&RemoveCopilot=true&RemoveCortana=true&RemoveDevHome=true&RemoveFamily=true&RemoveFeedbackHub=true&RemoveGameAssist=true&RemoveInternetExplorer=true&RemoveMailCalendar=true&RemoveMaps=true&RemoveMediaFeatures=true&RemoveMixedReality=true&RemoveZuneVideo=true&RemoveNews=true&RemoveOneDrive=true&RemoveOneNote=true&RemoveOneSync=true&RemoveOutlook=true&RemovePaint3D=true&RemovePeople=true&RemovePowerAutomate=true&RemovePowerShell2=true&RemovePowerShellISE=true&RemoveRecall=true&RemoveSkype=true&RemoveSolitaire=true&RemoveStepsRecorder=true&RemoveStickyNotes=true&RemoveGetStarted=true&RemoveToDo=true&RemoveVoiceRecorder=true&RemoveWallet=true&RemoveWeather=true&RemoveFaxAndScan=true&RemoveWindowsMediaPlayer=true&RemoveWordPad=true&RemoveXboxApps=true&RemoveYourPhone=true&FirstLogonScript0=Write-Host+%22Customizing+your+device.+Please+wait...%22+-ForegroundColor+Cyan%0D%0AStart-Process+powershell+-Verb+RunAs+-ArgumentList+%22-ExecutionPolicy+Bypass+-Command+%60%22irm+%27https%3A%2F%2Fraw.githubusercontent.com%2FStensel8%2FDenkoICT%2Frefs%2Fheads%2Fmain%2FScripts%2Fps_Init-Deployment.ps1%27+%7C+iex%60%22%22+-Wait%0D%0A&FirstLogonScriptType0=Ps1&RestartExplorer=true&WdacMode=Skip-->
+	<!--https://schneegans.de/windows/unattend-generator/?LanguageMode=Unattended&UILanguage=nl-NL&Locale=nl-NL&Keyboard=00020409&GeoLocation=176&ProcessorArchitecture=amd64&ProcessorArchitecture=arm64&HidePowerShellWindows=true&ComputerNameMode=Script&ComputerNameScript=try+%7B%0D%0A++++%24serial+%3D+%28Get-CimInstance+Win32_BIOS+-ErrorAction+Stop%29.SerialNumber%0D%0A++++%0D%0A++++if+%28%5Bstring%5D%3A%3AIsNullOrWhiteSpace%28%24serial%29%29+%7B%0D%0A++++++++return+%27PC-UNKNOWN%27%0D%0A++++%7D%0D%0A++++%0D%0A++++%23+Clean+up+the+serial+number+%28remove+any+whitespace%29%0D%0A++++%24serial+%3D+%24serial.Trim%28%29%0D%0A++++%0D%0A++++%23+Check+if+serial+is+at+least+5+characters+for+formatting%0D%0A++++if+%28%24serial.Length+-lt+5%29+%7B%0D%0A++++++++%23+If+less+than+5+characters%2C+use+the+full+serial%0D%0A++++++++return+%22PC-%24serial%22%0D%0A++++%7D+else+%7B%0D%0A++++++++%23+Format+the+serial+number+to+give+back+the+last+5+characters+prefixed+with+%27PC-%27%0D%0A++++++++return+%27PC-%7B0%7D%27+-f+%24serial.Substring%28%24serial.Length+-+5%29%0D%0A++++%7D%0D%0A++++%0D%0A%7D+catch+%7B%0D%0A++++return+%27PC-ERROR%27%0D%0A%7D&CompactOsMode=Default&TimeZoneMode=Explicit&TimeZone=W.+Europe+Standard+Time&PartitionMode=Interactive&DiskAssertionMode=Skip&WindowsEditionMode=Generic&WindowsEdition=pro&InstallFromMode=Automatic&PEMode=Default&UserAccountMode=Unattended&AccountName0=DenkoAdmin&AccountDisplayName0=DenkoAdmin&AccountPassword0=&AccountGroup0=Administrators&AutoLogonMode=Own&PasswordExpirationMode=Unlimited&LockoutMode=Default&HideFiles=Hidden&ShowFileExtensions=true&LaunchToThisPC=true&ShowEndTask=true&TaskbarSearch=Hide&TaskbarIconsMode=Custom&TaskbarIconsXml=%3CLayoutModificationTemplate+xmlns%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FLayoutModification%22%0D%0A++xmlns%3Adefaultlayout%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FFullDefaultLayout%22%0D%0A++xmlns%3Ataskbar%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FTaskbarLayout%22+Version%3D%221%22%3E%0D%0A++%3CCustomTaskbarLayoutCollection+PinListPlacement%3D%22Replace%22%3E%0D%0A++++%3Cdefaultlayout%3ATaskbarLayout%3E%0D%0A++++++%3Ctaskbar%3ATaskbarPinList%3E%0D%0A++++++++%3Ctaskbar%3ADesktopApp+DesktopApplicationID%3D%22Microsoft.Windows.Explorer%22+%2F%3E%0D%0A++++++++%3Ctaskbar%3ADesktopApp+DesktopApplicationLinkPath%3D%22%25ProgramFiles%28x86%29%25%5CMicrosoft%5CEdge%5CApplication%5Cmsedge.exe%22+%2F%3E%0D%0A++++++%3C%2Ftaskbar%3ATaskbarPinList%3E%0D%0A++++%3C%2Fdefaultlayout%3ATaskbarLayout%3E%0D%0A++%3C%2FCustomTaskbarLayoutCollection%3E%0D%0A%3C%2FLayoutModificationTemplate%3E%0D%0A&DisableWidgets=true&DisableBingResults=true&StartTilesMode=Custom&StartTilesXml=%3CLayoutModificationTemplate+xmlns%3Adefaultlayout%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FFullDefaultLayout%22+%0D%0A++xmlns%3Astart%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FStartLayout%22+%0D%0A++Version%3D%221%22+%0D%0A++xmlns%3D%22http%3A%2F%2Fschemas.microsoft.com%2FStart%2F2014%2FLayoutModification%22%3E%0D%0A++%3CLayoutOptions+StartTileGroupCellWidth%3D%226%22+%2F%3E%0D%0A++%3CDefaultLayoutOverride%3E%0D%0A++++%3CStartLayoutCollection%3E%0D%0A++++++%3Cdefaultlayout%3AStartLayout+GroupCellWidth%3D%226%22%3E%0D%0A++++++++%3Cstart%3AGroup+Name%3D%22%22%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%220%22+Row%3D%220%22+DesktopApplicationLinkPath%3D%22%25APPDATA%25%5CMicrosoft%5CWindows%5CStart+Menu%5CPrograms%5CSystem+Tools%5CFile+Explorer.lnk%22+%2F%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%222%22+Row%3D%220%22+DesktopApplicationLinkPath%3D%22%25ALLUSERSPROFILE%25%5CMicrosoft%5CWindows%5CStart+Menu%5CPrograms%5CMicrosoft+Edge.lnk%22+%2F%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%224%22+Row%3D%220%22+DesktopApplicationID%3D%22Microsoft.Windows.ImmersiveControlPanel_cw5n1h2txyewy%21microsoft.windows.immersivecontrolpanel%22+%2F%3E%0D%0A++++++++++%3Cstart%3ADesktopApplicationTile+Size%3D%222x2%22+Column%3D%220%22+Row%3D%222%22+DesktopApplicationID%3D%22MicrosoftCorporationII.QuickAssist_8wekyb3d8bbwe%21App%22+%2F%3E%0D%0A++++++++%3C%2Fstart%3AGroup%3E%0D%0A++++++%3C%2Fdefaultlayout%3AStartLayout%3E%0D%0A++++%3C%2FStartLayoutCollection%3E%0D%0A++%3C%2FDefaultLayoutOverride%3E%0D%0A%3C%2FLayoutModificationTemplate%3E%0D%0A&StartPinsMode=Custom&StartPinsJson=%7B%0D%0A++%22pinnedList%22%3A+%5B%0D%0A++++%7B%0D%0A++++++%22desktopAppLink%22%3A+%22%25APPDATA%25%5C%5CMicrosoft%5C%5CWindows%5C%5CStart+Menu%5C%5CPrograms%5C%5CSystem+Tools%5C%5CFile+Explorer.lnk%22%0D%0A++++%7D%2C%0D%0A++++%7B%0D%0A++++++%22desktopAppLink%22%3A+%22%25ALLUSERSPROFILE%25%5C%5CMicrosoft%5C%5CWindows%5C%5CStart+Menu%5C%5CPrograms%5C%5CMicrosoft+Edge.lnk%22%0D%0A++++%7D%2C%0D%0A++++%7B%0D%0A++++++%22packagedAppId%22%3A+%22Microsoft.Windows.ImmersiveControlPanel_cw5n1h2txyewy%21microsoft.windows.immersivecontrolpanel%22%0D%0A++++%7D%2C%0D%0A++++%7B%0D%0A++++++%22packagedAppId%22%3A+%22MicrosoftCorporationII.QuickAssist_8wekyb3d8bbwe%21App%22%0D%0A++++%7D%0D%0A++%5D%0D%0A%7D%0D%0A&DisableFastStartup=true&EnableLongPaths=true&DisableLastAccess=true&DisableAppSuggestions=true&HideEdgeFre=true&DisableEdgeStartupBoost=true&DeleteWindowsOld=true&EffectsMode=Default&DesktopIconsMode=Custom&IconRecycleBin=true&IconThisPC=true&StartFoldersMode=Custom&StartFolderFileExplorer=true&StartFolderSettings=true&WifiMode=Skip&ExpressSettings=DisableAll&LockKeysMode=Skip&StickyKeysMode=Disabled&ColorMode=Custom&SystemColorTheme=Dark&AppsColorTheme=Dark&AccentColor=%230078d4&WallpaperMode=Solid&WallpaperColor=%23000000&LockScreenMode=Default&Remove3DViewer=true&RemoveBingSearch=true&RemoveClipchamp=true&RemoveCopilot=true&RemoveCortana=true&RemoveDevHome=true&RemoveFamily=true&RemoveFeedbackHub=true&RemoveGameAssist=true&RemoveInternetExplorer=true&RemoveMailCalendar=true&RemoveMaps=true&RemoveMediaFeatures=true&RemoveMixedReality=true&RemoveZuneVideo=true&RemoveNews=true&RemoveOneDrive=true&RemoveOneNote=true&RemoveOneSync=true&RemoveOutlook=true&RemovePaint3D=true&RemovePeople=true&RemovePowerAutomate=true&RemovePowerShell2=true&RemovePowerShellISE=true&RemoveRecall=true&RemoveSkype=true&RemoveSolitaire=true&RemoveStepsRecorder=true&RemoveStickyNotes=true&RemoveGetStarted=true&RemoveToDo=true&RemoveVoiceRecorder=true&RemoveWallet=true&RemoveWeather=true&RemoveFaxAndScan=true&RemoveWindowsMediaPlayer=true&RemoveWordPad=true&RemoveXboxApps=true&RemoveYourPhone=true&FirstLogonScript0=Write-Host+%22Customizing+your+device.+Please+wait...%22+-ForegroundColor+Cyan%0D%0AStart-Process+powershell+-Verb+RunAs+-ArgumentList+%22-ExecutionPolicy+Bypass+-Command+%60%22irm+%27https%3A%2F%2Fraw.githubusercontent.com%2FStensel8%2FDenkoICT%2Frefs%2Fheads%2Fmain%2FScripts%2Fstart.ps1%27+%7C+iex%60%22%22+-Wait%0D%0A&FirstLogonScriptType0=Ps1&WdacMode=Skip-->
 	<settings pass="offlineServicing"></settings>
 	<settings pass="windowsPE">
 		<component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
@@ -44,11 +44,11 @@
 			<RunSynchronous>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>1</Order>
-					<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "$xml = [xml]::new(); $xml.Load('C:\Windows\Panther\unattend.xml'); $sb = [scriptblock]::Create( $xml.unattend.Extensions.ExtractScript ); Invoke-Command -ScriptBlock $sb -ArgumentList $xml;"</Path>
+					<Path>powershell.exe -WindowStyle Hidden -NoProfile -Command "$xml = [xml]::new(); $xml.Load('C:\Windows\Panther\unattend.xml'); $sb = [scriptblock]::Create( $xml.unattend.Extensions.ExtractScript ); Invoke-Command -ScriptBlock $sb -ArgumentList $xml;"</Path>
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>2</Order>
-					<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\Specialize.ps1' -Raw | Invoke-Expression;"</Path>
+					<Path>powershell.exe -WindowStyle Hidden -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\Specialize.ps1' -Raw | Invoke-Expression;"</Path>
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>3</Order>
@@ -56,7 +56,7 @@
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>4</Order>
-					<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\DefaultUser.ps1' -Raw | Invoke-Expression;"</Path>
+					<Path>powershell.exe -WindowStyle Hidden -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\DefaultUser.ps1' -Raw | Invoke-Expression;"</Path>
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>5</Order>
@@ -68,11 +68,11 @@
 			<RunSynchronous>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>1</Order>
-					<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "$xml = [xml]::new(); $xml.Load('C:\Windows\Panther\unattend.xml'); $sb = [scriptblock]::Create( $xml.unattend.Extensions.ExtractScript ); Invoke-Command -ScriptBlock $sb -ArgumentList $xml;"</Path>
+					<Path>powershell.exe -WindowStyle Hidden -NoProfile -Command "$xml = [xml]::new(); $xml.Load('C:\Windows\Panther\unattend.xml'); $sb = [scriptblock]::Create( $xml.unattend.Extensions.ExtractScript ); Invoke-Command -ScriptBlock $sb -ArgumentList $xml;"</Path>
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>2</Order>
-					<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\Specialize.ps1' -Raw | Invoke-Expression;"</Path>
+					<Path>powershell.exe -WindowStyle Hidden -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\Specialize.ps1' -Raw | Invoke-Expression;"</Path>
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>3</Order>
@@ -80,7 +80,7 @@
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>4</Order>
-					<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\DefaultUser.ps1' -Raw | Invoke-Expression;"</Path>
+					<Path>powershell.exe -WindowStyle Hidden -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\DefaultUser.ps1' -Raw | Invoke-Expression;"</Path>
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>5</Order>
@@ -93,13 +93,13 @@
 	<settings pass="auditUser"></settings>
 	<settings pass="oobeSystem">
 		<component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-			<InputLocale>00020409</InputLocale>
+			<InputLocale>0413:00020409</InputLocale>
 			<SystemLocale>nl-NL</SystemLocale>
 			<UILanguage>nl-NL</UILanguage>
 			<UserLocale>nl-NL</UserLocale>
 		</component>
 		<component name="Microsoft-Windows-International-Core" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-			<InputLocale>00020409</InputLocale>
+			<InputLocale>0413:00020409</InputLocale>
 			<SystemLocale>nl-NL</SystemLocale>
 			<UILanguage>nl-NL</UILanguage>
 			<UserLocale>nl-NL</UserLocale>
@@ -115,6 +115,7 @@
 							<Value></Value>
 							<PlainText>true</PlainText>
 						</Password>
+						<PasswordExpired>1</PasswordExpired>
 					</LocalAccount>
 				</LocalAccounts>
 			</UserAccounts>
@@ -136,7 +137,7 @@
 			<FirstLogonCommands>
 				<SynchronousCommand wcm:action="add">
 					<Order>1</Order>
-					<CommandLine>powershell.exe -WindowStyle Normal -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\FirstLogon.ps1' -Raw | Invoke-Expression;"</CommandLine>
+					<CommandLine>powershell.exe -WindowStyle Hidden -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\FirstLogon.ps1' -Raw | Invoke-Expression;"</CommandLine>
 				</SynchronousCommand>
 			</FirstLogonCommands>
 		</component>
@@ -151,6 +152,7 @@
 							<Value></Value>
 							<PlainText>true</PlainText>
 						</Password>
+						<PasswordExpired>1</PasswordExpired>
 					</LocalAccount>
 				</LocalAccounts>
 			</UserAccounts>
@@ -172,7 +174,7 @@
 			<FirstLogonCommands>
 				<SynchronousCommand wcm:action="add">
 					<Order>1</Order>
-					<CommandLine>powershell.exe -WindowStyle Normal -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\FirstLogon.ps1' -Raw | Invoke-Expression;"</CommandLine>
+					<CommandLine>powershell.exe -WindowStyle Hidden -NoProfile -Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\FirstLogon.ps1' -Raw | Invoke-Expression;"</CommandLine>
 				</SynchronousCommand>
 			</FirstLogonCommands>
 		</component>
@@ -196,11 +198,28 @@ foreach( $file in $Document.unattend.Extensions.File ) {
 }
 		</ExtractScript>
 		<File path="C:\Windows\Setup\Scripts\GetComputerName.ps1">
-# Get the serialnumber of the machine via the CIMinstance cmdlet
-$serial = (Get-CimInstance Win32_BIOS -ErrorAction Stop).SerialNumber
-
-# Format the serialnumber to give back the last 4 characters prefixed with 'PC-'
-return 'PC-{0}' -f $serial.Substring($serial.Length - 4)
+try {
+    $serial = (Get-CimInstance Win32_BIOS -ErrorAction Stop).SerialNumber
+    
+    if ([string]::IsNullOrWhiteSpace($serial)) {
+        return 'PC-UNKNOWN'
+    }
+    
+    # Clean up the serial number (remove any whitespace)
+    $serial = $serial.Trim()
+    
+    # Check if serial is at least 5 characters for formatting
+    if ($serial.Length -lt 5) {
+        # If less than 5 characters, use the full serial
+        return "PC-$serial"
+    } else {
+        # Format the serial number to give back the last 5 characters prefixed with 'PC-'
+        return 'PC-{0}' -f $serial.Substring($serial.Length - 5)
+    }
+    
+} catch {
+    return 'PC-ERROR'
+}
 		</File>
 		<File path="C:\Windows\Setup\Scripts\SetComputerName.ps1">
 $ErrorActionPreference = 'Stop';
@@ -487,10 +506,16 @@ End If
 $json = '{
   "pinnedList": [
     {
-      "desktopAppLink": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\File Explorer.lnk"
+      "desktopAppLink": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\System Tools\\File Explorer.lnk"
     },
     {
       "desktopAppLink": "%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\Microsoft Edge.lnk"
+    },
+    {
+      "packagedAppId": "Microsoft.Windows.ImmersiveControlPanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel"
+    },
+    {
+      "packagedAppId": "MicrosoftCorporationII.QuickAssist_8wekyb3d8bbwe!App"
     }
   ]
 }';
@@ -508,8 +533,10 @@ Set-ItemProperty -LiteralPath $key -Name 'ConfigureStartPins' -Value $json -Type
 		&lt;StartLayoutCollection&gt;
 			&lt;defaultlayout:StartLayout GroupCellWidth="6"&gt;
 				&lt;start:Group Name=""&gt;
-					&lt;start:DesktopApplicationTile Size="2x2" Column="2" Row="0" DesktopApplicationLinkPath="%APPDATA%\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk" /&gt;
-					&lt;start:DesktopApplicationTile Size="2x2" Column="0" Row="0" DesktopApplicationLinkPath="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Microsoft Edge.lnk" /&gt;
+					&lt;start:DesktopApplicationTile Size="2x2" Column="0" Row="0" DesktopApplicationLinkPath="%APPDATA%\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk" /&gt;
+					&lt;start:DesktopApplicationTile Size="2x2" Column="2" Row="0" DesktopApplicationLinkPath="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Microsoft Edge.lnk" /&gt;
+					&lt;start:DesktopApplicationTile Size="2x2" Column="4" Row="0" DesktopApplicationID="Microsoft.Windows.ImmersiveControlPanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel" /&gt;
+					&lt;start:DesktopApplicationTile Size="2x2" Column="0" Row="2" DesktopApplicationID="MicrosoftCorporationII.QuickAssist_8wekyb3d8bbwe!App" /&gt;
 				&lt;/start:Group&gt;
 			&lt;/defaultlayout:StartLayout&gt;
 		&lt;/StartLayoutCollection&gt;
@@ -569,30 +596,70 @@ $htmlAccentColor = '#0078D4';
 	Set-ItemProperty @params -Value $palette -Type 'Binary' -Force;
 };
 		</File>
+		<File path="C:\Windows\Setup\Scripts\SetWallpaper.ps1">
+Add-Type -TypeDefinition '
+	using System.Drawing;
+	using System.Runtime.InteropServices;
+	
+	public static class WallpaperSetter {
+		[DllImport("user32.dll")]
+		private static extern bool SetSysColors(
+			int cElements, 
+			int[] lpaElements,
+			int[] lpaRgbValues
+		);
+
+		[DllImport("user32.dll")]
+		private static extern bool SystemParametersInfo(
+			uint uiAction,
+			uint uiParam,
+			string pvParam,
+			uint fWinIni
+		);
+
+		public static void SetDesktopBackground(Color color) {
+			SystemParametersInfo(20, 0, "", 0);
+			SetSysColors(1, new int[] { 1 }, new int[] { ColorTranslator.ToWin32(color) });
+		}
+
+		public static void SetDesktopImage(string file) {
+			SystemParametersInfo(20, 0, file, 0);
+		}
+	}
+' -ReferencedAssemblies 'System.Drawing';
+
+function Set-WallpaperColor {
+	param(
+		[string]
+		$HtmlColor
+	);
+
+	$color = [System.Drawing.ColorTranslator]::FromHtml( $HtmlColor );
+	[WallpaperSetter]::SetDesktopBackground( $color );
+	Set-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers' -Name 'BackgroundType' -Type 'DWord' -Value 1 -Force;
+	Set-ItemProperty -Path 'Registry::HKCU\Control Panel\Desktop' -Name 'WallPaper' -Type 'String' -Value '' -Force;
+	Set-ItemProperty -Path 'Registry::HKCU\Control Panel\Colors' -Name 'Background' -Type 'String' -Value "$($color.R) $($color.G) $($color.B)" -Force;
+}
+
+function Set-WallpaperImage {
+	param(
+		[string]
+		$LiteralPath
+	);
+
+	if( $LiteralPath | Test-Path ) {
+		[WallpaperSetter]::SetDesktopImage( $LiteralPath );
+		Set-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers' -Name 'BackgroundType' -Type 'DWord' -Value 0 -Force;
+		Set-ItemProperty -Path 'Registry::HKCU\Control Panel\Desktop' -Name 'WallPaper' -Type 'String' -Value $LiteralPath -Force;
+	} else {
+		"Cannot use '$LiteralPath' as a desktop wallpaper because that file does not exist.";
+	}
+}
+Set-WallpaperColor -HtmlColor '#000000';
+		</File>
 		<File path="C:\Windows\Setup\Scripts\unattend-01.ps1">
-# ============================================================
-# DENKO ICT - First Logon Setup Script
-# ============================================================
-# This script runs during the first user logon after Windows installation.
-# It launches the main deployment script which handles all configuration.
-#
-# RMM Agent Setup:
-# - Place any RMM agent installer on the USB root (filename must contain 'Agent')
-# - Example: DattoRMMAgent.exe, RMM-Agent-Installer.exe, Agent.exe
-# - The installer will be copied to C:\DenkoICT\Download\Agent.exe during setup
-# - The deployment script will execute it after hostname change and reboot
-# ============================================================
-
 Write-Host "Customizing your device. Please wait..." -ForegroundColor Cyan
-Write-Host "Launching deployment script in a new window..." -ForegroundColor Cyan
-
-# Launch main deployment script in a new window (non-blocking)
-# This allows the FirstLogon window to close properly while deployment continues
-Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/ps_Init-Deployment.ps1' | iex`""
-
-Write-Host "Deployment script launched successfully." -ForegroundColor Green
-Write-Host "The setup will continue in separate windows." -ForegroundColor Green
-Start-Sleep -Seconds 2
+Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/Stensel8/DenkoICT/refs/heads/main/Scripts/start.ps1' | iex`"" -Wait
 		</File>
 		<File path="C:\Windows\Setup\Scripts\Specialize.ps1">
 $scripts = @(
@@ -600,148 +667,6 @@ $scripts = @(
 		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\GetComputerName.ps1' -Raw | Invoke-Expression &gt; 'C:\Windows\Setup\Scripts\ComputerName.txt';
 		Start-Process -FilePath ( Get-Process -Id $PID ).Path -ArgumentList '-NoProfile', '-Command', 'Get-Content -LiteralPath "C:\Windows\Setup\Scripts\SetComputerName.ps1" -Raw | Invoke-Expression;' -WindowStyle 'Hidden';
 		Start-Sleep -Seconds 10;
-	};
-	{
-		# Enhanced RMM Agent Detection and Copy (PowerShell 2.0 Compatible)
-		$destDir = 'C:\DenkoICT\Download';
-		if (!(Test-Path $destDir)) { 
-			New-Item -Path $destDir -ItemType Directory -Force | Out-Null;
-		};
-		
-		$logDir = 'C:\DenkoICT\Logs';
-		if (!(Test-Path $logDir)) { 
-			New-Item -Path $logDir -ItemType Directory -Force | Out-Null;
-		};
-		
-		# Log file for debugging (consolidated logs go to Logs folder)
-		$logFile = "$logDir\agent-deployment.log";
-		
-		# Function to log messages (PS2 compatible)
-		function Write-AgentLog {
-			param([string]$Message);
-			$timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss';
-			Add-Content -Path $logFile -Value "[$timestamp] $Message";
-		};
-		
-		Write-AgentLog "Starting RMM agent search...";
-		
-		# Get all drive letters (PS2 compatible method)
-		$searchDrives = @();
-		$driveLetters = @('C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K');
-		foreach ($letter in $driveLetters) {
-			$drivePath = "${letter}:\";
-			if (Test-Path $drivePath) {
-				$searchDrives += $drivePath;
-			};
-		};
-		
-		# Remove C:\ as we don't want to search system drive
-		$searchDrives = $searchDrives | Where-Object { $_ -ne 'C:\' };
-		
-		Write-AgentLog "Searching drives: $($searchDrives -join ', ')";
-		
-		$agentFound = $false;
-		
-		foreach ($drive in $searchDrives) {
-			Write-AgentLog "Searching in $drive";
-			
-			# Search for Agent executable files
-			$searchPatterns = @('*Agent*.exe', '*RMM*.exe', '*Datto*.exe', '*N-able*.exe', '*Kaseya*.exe', '*ConnectWise*.exe', '*Ninja*.exe');
-			$agentFiles = @();
-			
-			foreach ($pattern in $searchPatterns) {
-				try {
-					$foundFiles = Get-ChildItem -Path $drive -Filter $pattern -ErrorAction SilentlyContinue;
-					if ($foundFiles) {
-						foreach ($file in $foundFiles) {
-							$agentFiles += $file;
-						};
-					};
-					
-					# Search one level deep
-					$subDirs = Get-ChildItem -Path $drive -Directory -ErrorAction SilentlyContinue;
-					if ($subDirs) {
-						foreach ($subDir in $subDirs) {
-							$foundFiles = Get-ChildItem -Path $subDir.FullName -Filter $pattern -ErrorAction SilentlyContinue;
-							if ($foundFiles) {
-								foreach ($file in $foundFiles) {
-									$agentFiles += $file;
-								};
-							};
-						};
-					};
-				} catch {
-					Write-AgentLog "Error searching $drive with pattern $pattern : $_";
-				};
-			};
-			
-			if ($agentFiles -and $agentFiles.Count -gt 0) {
-				# Take the first found agent
-				$agentFile = $agentFiles | Select-Object -First 1;
-				$targetPath = "$destDir\Agent.exe";
-				
-				Write-AgentLog "Found agent: $($agentFile.FullName)";
-				Write-AgentLog "Size: $($agentFile.Length) bytes";
-				Write-AgentLog "Copying to: $targetPath";
-				
-				try {
-					Copy-Item -Path $agentFile.FullName -Destination $targetPath -Force;
-					
-					# Verify copy
-					if (Test-Path $targetPath) {
-						$copiedFile = Get-Item $targetPath;
-						if ($copiedFile.Length -eq $agentFile.Length) {
-							Write-AgentLog "Successfully copied agent to $targetPath";
-							Write-Host "[RMM] Agent copied from $($agentFile.FullName) to $targetPath" -ForegroundColor Green;
-							$agentFound = $true;
-							
-							# Log agent information directly to the log file
-							Write-AgentLog "=== Agent Information ===";
-							Write-AgentLog "SourcePath=$($agentFile.FullName)";
-							Write-AgentLog "SourceName=$($agentFile.Name)";
-							Write-AgentLog "CopyTime=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')";
-							Write-AgentLog "Size=$($agentFile.Length)";
-							
-							break;
-						} else {
-							Write-AgentLog "ERROR: Copy verification failed - size mismatch";
-						};
-					} else {
-						Write-AgentLog "ERROR: Copy verification failed - file not found";
-					};
-				} catch {
-					Write-AgentLog "ERROR: Failed to copy agent: $_";
-				};
-			};
-			
-			if ($agentFound) { break; };
-		};
-		
-		if (-not $agentFound) {
-			Write-AgentLog "No RMM agent found on any searched drive";
-			Write-Host "[RMM] No agent found on removable drives" -ForegroundColor Yellow;
-			
-			# Look for installer scripts as fallback
-			foreach ($drive in $searchDrives) {
-				try {
-					$scripts = Get-ChildItem -Path $drive -Filter '*install*.ps1' -ErrorAction SilentlyContinue;
-					if ($scripts) {
-						foreach ($script in $scripts) {
-							if ($script.Name -match 'agent|rmm|remote') {
-								Copy-Item -Path $script.FullName -Destination "$destDir\install-rmm.ps1" -Force;
-								Write-AgentLog "Copied installation script: $($script.Name)";
-								Write-Host "[RMM] Copied installation script: $($script.Name)" -ForegroundColor Cyan;
-								break;
-							};
-						};
-					};
-				} catch {
-					Write-AgentLog "Error searching for scripts in $drive : $_";
-				};
-			};
-		};
-		
-		Write-AgentLog "Agent search completed";
 	};
 	{
 		Remove-Item -LiteralPath 'Registry::HKLM\Software\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\DevHomeUpdate' -Force -ErrorAction 'SilentlyContinue';
@@ -835,7 +760,7 @@ $scripts = @(
 		Set-ItemProperty -LiteralPath 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'LaunchTo' -Type 'DWord' -Value 1;
 	};
 	{
-		Set-ItemProperty -LiteralPath 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Search' -Name 'SearchboxTaskbarMode' -Type 'DWord' -Value 3;
+		Set-ItemProperty -LiteralPath 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Search' -Name 'SearchboxTaskbarMode' -Type 'DWord' -Value 0;
 	};
 	{
 		New-Item -Path 'Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\ClassicStartMenu' -Force;
@@ -872,6 +797,9 @@ $scripts = @(
 	};
 	{
 		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\SetColorTheme.ps1' -Raw | Invoke-Expression;
+	};
+	{
+		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\SetWallpaper.ps1' -Raw | Invoke-Expression;
 	};
 	{
 		Get-Process -Name 'explorer' -ErrorAction 'SilentlyContinue' | Where-Object -FilterScript {
@@ -961,7 +889,7 @@ $scripts = @(
 		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\DWM" /v ColorPrevalence /t REG_DWORD /d 0 /f;
 	};
 	{
-		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v "UnattendedSetup" /t REG_SZ /d "powershell.exe -WindowStyle Normal -NoProfile -Command \""Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\UserOnce.ps1' -Raw | Invoke-Expression;\""" /f;
+		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v "UnattendedSetup" /t REG_SZ /d "powershell.exe -WindowStyle Hidden -NoProfile -Command \""Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\UserOnce.ps1' -Raw | Invoke-Expression;\""" /f;
 	};
 );
 
@@ -997,6 +925,13 @@ $scripts = @(
 	};
 	{
 		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-01.ps1' -Raw | Invoke-Expression;
+	};
+	{
+		Remove-Item -LiteralPath @(
+		  'C:\Windows\Panther\unattend.xml';
+		  'C:\Windows\Panther\unattend-original.xml';
+		  'C:\Windows\Setup\Scripts\Wifi.xml';
+		) -Force -ErrorAction 'SilentlyContinue' -Verbose;
 	};
 );
 

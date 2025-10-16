@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 2.1.0
+.VERSION 3.0.0
 
 .AUTHOR Sten Tijhuis
 
@@ -14,9 +14,11 @@
 [Version 1.0.0] - Initial Release. Updates all apps via WinGet
 [Version 2.0.0] - Improved script using best practices and cmdletbinding
 [Version 2.1.0] - Added PSScriptInfo metadata and improved error handling
+[Version 3.0.0] - Refactored to use modular utilities, removed parameters for simplicity
 #>
 
 #requires -Version 5.1
+#requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
@@ -24,40 +26,13 @@
 
 .DESCRIPTION
     Scans for available application updates using Windows Package Manager (WinGet)
-    and installs them automatically. Supports exclusion lists and dry-run mode.
-
-    Features:
-    - Automatic update detection and installation
-    - Application exclusion support
-    - Show-only mode for preview
-    - Detailed logging with update statistics
-    - Integration with Intune deployment tracking
-
-.PARAMETER ExcludeApps
-    Array of WinGet application IDs to exclude from updates.
-    Useful for pinning specific application versions.
-
-.PARAMETER ShowOnly
-    Display available updates without installing them.
-    Useful for preview and planning purposes.
-
-.PARAMETER SkipLogging
-    Skip transcript logging for faster execution.
+    and installs them automatically.
 
 .EXAMPLE
-    .\ps_Update-AllApps.ps1
-    Updates all applications with available updates.
-
-.EXAMPLE
-    .\ps_Update-AllApps.ps1 -ShowOnly
-    Lists available updates without installing them.
-
-.EXAMPLE
-    .\ps_Update-AllApps.ps1 -ExcludeApps @("Mozilla.Firefox", "Google.Chrome")
-    Updates all applications except Firefox and Chrome.
+    .\Update-AllApps.ps1
 
 .NOTES
-    Version      : 2.1.0
+    Version      : 3.0.0
     Created by   : Sten Tijhuis
     Company      : Denko ICT
     Requires     : Admin rights, WinGet installed
@@ -66,78 +41,56 @@
     Project Site: https://github.com/Stensel8/DenkoICT
 #>
 
-#requires -Version 5.1
-
-[CmdletBinding()]
-param(
-    [string[]]$ExcludeApps = @(),
-    [switch]$ShowOnly,
-    [switch]$SkipLogging
-)
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 
-# Load custom functions
-$functionsPath = Join-Path $PSScriptRoot 'ps_Custom-Functions.ps1'
-if (-not (Test-Path $functionsPath)) {
-    Write-Error "Required functions file not found: $functionsPath"
-    exit 1
-}
-. $functionsPath
+# Import required modules
+$possiblePaths = @(
+    (Join-Path $PSScriptRoot 'Utilities'),
+    'C:\DenkoICT\Download\Utilities',
+    'C:\DenkoICT\Utilities'
+)
+$utilitiesPath = $null
+foreach ($p in $possiblePaths) { if (Test-Path $p) { $utilitiesPath = $p; break } }
+if (-not $utilitiesPath) { Write-Error "Could not find Utilities folder"; exit 1 }
 
-# Initialize
-if (-not $SkipLogging) {
-    $Global:DenkoConfig.LogName = "$($MyInvocation.MyCommand.Name).log"
-    Start-Logging
-}
+Import-Module (Join-Path $utilitiesPath 'Logging.psm1') -Force -Global
+Import-Module (Join-Path $utilitiesPath 'Registry.psm1') -Force -Global
+Import-Module (Join-Path $utilitiesPath 'Winget.psm1') -Force -Global
+Import-Module (Join-Path $utilitiesPath 'Deployment.psm1') -Force -Global
+
+Start-EmergencyTranscript -LogName 'Update-AllApps.log'
+Initialize-Script -RequireAdmin
 
 try {
-    Assert-AdminRights
-    
-    # Check WinGet availability
-    Write-Log "Checking WinGet availability..." -Level Info
-    try {
-        $wingetVersion = winget --version 2>$null
-        if (-not $wingetVersion) {
-            throw "WinGet not found"
-        }
-        Write-Log "WinGet version: $wingetVersion" -Level Info
-    } catch {
-        Write-Log "WinGet is not installed or not in PATH" -Level Error
-        exit 1
-    }
-    
+    # Ensure WinGet availability
+    $wg = Test-WinGetFunctional
+    $wingetPath = $wg.Path
+
     # Get available updates
     Write-Log "Checking for available updates..." -Level Info
-    $upgradeOutput = winget upgrade --include-unknown 2>&1
-    
+    $upgradeOutput = & $wingetPath upgrade --include-unknown 2>&1
+
     # Parse output for updates
     $updates = @()
     $parsing = $false
-    
+
     foreach ($line in $upgradeOutput) {
         # Start parsing after the header line
         if ($line -match '^-+\s+-+') {
             $parsing = $true
             continue
         }
-        
+
         if (-not $parsing) { continue }
         if ($line -match '^\d+ upgrades? available') { break }
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        
+
         # Parse update line (Name, Id, Current Version, Available Version)
         $parts = $line -split '\s{2,}'
         if ($parts.Count -ge 4) {
             $id = $parts[1].Trim()
-            
-            # Skip if in exclude list
-            if ($id -in $ExcludeApps) {
-                Write-Log "Skipping excluded app: $id" -Level Info
-                continue
-            }
-            
+
             $updates += [PSCustomObject]@{
                 Name = $parts[0].Trim()
                 Id = $id
@@ -146,45 +99,40 @@ try {
             }
         }
     }
-    
+
     if ($updates.Count -eq 0) {
         Write-Log "No updates available" -Level Success
-        Set-IntuneSuccess -AppName 'AppUpdates' -Version (Get-Date -Format 'yyyy.MM.dd')
+        Set-IntuneSuccess -AppName 'UpdateAllApps' -Version (Get-Date -Format 'yyyy.MM.dd')
         exit 0
     }
-    
+
     Write-Log "Found $($updates.Count) available updates:" -Level Info
     foreach ($update in $updates) {
         Write-Log "  $($update.Name): $($update.CurrentVersion) → $($update.AvailableVersion)" -Level Info
     }
-    
-    if ($ShowOnly) {
-        Write-Log "ShowOnly mode - skipping installation" -Level Warning
-        exit 0
-    }
-    
+
     # Install updates
     Write-Log "Starting updates..." -Level Info
     $success = 0
     $failed = 0
-    
+
     foreach ($update in $updates) {
         Write-Log "Updating $($update.Name)..." -Level Info
-        
+
         $result = Invoke-WithRetry -ScriptBlock {
-            $proc = Start-Process winget -ArgumentList @(
+            $proc = Start-Process $wingetPath -ArgumentList @(
                 'upgrade',
                 '--id', $update.Id,
                 '--silent',
                 '--accept-package-agreements',
                 '--accept-source-agreements'
             ) -Wait -PassThru -NoNewWindow
-            
+
             if ($proc.ExitCode -ne 0) {
                 throw "Exit code: $($proc.ExitCode)"
             }
         } -MaxAttempts 2 -DelaySeconds 3
-        
+
         if ($null -eq $result -or $result -eq $true) {
             Write-Log "  ✓ Updated successfully" -Level Success
             $success++
@@ -193,22 +141,20 @@ try {
             $failed++
         }
     }
-    
+
     # Summary
     Write-Log "Update complete: $success succeeded, $failed failed" -Level $(if ($failed -eq 0) { 'Success' } else { 'Warning' })
-    
+
     # Record Intune success if all updates succeeded
     if ($failed -eq 0) {
-        Set-IntuneSuccess -AppName 'AppUpdates' -Version (Get-Date -Format 'yyyy.MM.dd')
+        Set-IntuneSuccess -AppName 'UpdateAllApps' -Version (Get-Date -Format 'yyyy.MM.dd')
     }
-    
+
     exit $(if ($failed -gt 0) { 1 } else { 0 })
-    
+
 } catch {
     Write-Log "Update process failed: $_" -Level Error
     exit 1
 } finally {
-    if (-not $SkipLogging) {
-        Stop-Logging
-    }
+    Complete-Script
 }
