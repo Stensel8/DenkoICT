@@ -7,14 +7,14 @@
 </p>
 
 [![Dependabot Updates](https://github.com/Stensel8/DenkoICT/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/dependabot/dependabot-updates)
-
 [![DevSkim](https://github.com/Stensel8/DenkoICT/actions/workflows/devskim.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/devskim.yml)
-
 [![PSScriptAnalyzer](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml)
+
+**Current Version:** [v1.0.0](https://github.com/Stensel8/DenkoICT/releases/tag/v1.0.0) | [Changelog](CHANGELOG.md) | [Releases](RELEASES.md) | [Scope](SCOPE.md)
 
 Automated Windows 11 Pro deployment tools. No manual clicking. Uses PowerShell 2.0 in WinPE, PowerShell 5.1 to bootstrap PowerShell 7, then PowerShell 7 for the actual deployment. Uses modern tools where possible.
 
-![Terminal console showing successful deployment progress with green checkmarks indicating completed steps: WinGet Installation, Driver Updates for HP and Dell, Applications, Bloatware Removal, Wallpaper Configuration, and Windows Updates. The summary shows 6 successful steps, 0 failures, and 0 skipped, with a log file location at C:\DenkoICT\Logs\ps_Deploy-Device.ps1.log](Docs/Deployment_Flow.png)
+![Terminal console showing successful deployment progress with green checkmarks indicating completed steps: WinGet Installation, Driver Updates for HP and Dell, Applications, Bloatware Removal, Wallpaper Configuration, and Windows Updates. The summary shows 6 successful steps, 0 failures, and 0 skipped, with a log file location at C:\DenkoICT\Logs\Deploy-Device.ps1.log](Docs/Deployment_Flow.png)
 
 ![Windows 11 deployment completion screen showing successful installation with all components properly configured. The interface displays the final desktop environment with installed applications and configured settings, providing visual confirmation that the automated deployment process completed as expected.](Docs/Expected_Result.png)
 
@@ -57,8 +57,8 @@ Without Ethernet, only the base Windows install with hostname change happens.
 
 1. `autounattend.xml` configures Windows, copies RMM agent from USB to `C:\DenkoICT\Download\Agent.exe`
 2. Hostname changes to `PC-{SerialNumber}`, system reboots  
-3. `ps_Init-Deployment.ps1` runs on first login (PowerShell 5.1)
-4. Installs WinGet and PowerShell 7, then launches `ps_Deploy-Device.ps1`
+3. `Start.ps1` runs on first login (PowerShell 5.1)
+4. Installs WinGet and PowerShell 7, then launches `Deploy-Device.ps1`
 5. Each deployment step tracked in `HKLM:\SOFTWARE\DenkoICT\Deployment\Steps`
 
 **Steps executed:**
@@ -75,23 +75,23 @@ If something fails, deployment continues. Check `C:\DenkoICT\Logs` for detailed 
 
 | Script | What It Does |
 | --- | --- |
-| [ps_Init-Deployment.ps1](Scripts/ps_Init-Deployment.ps1) | **Bootstrapper** - Installs WinGet + PS7, launches main deployment |
-| [ps_Deploy-Device.ps1](Scripts/ps_Deploy-Device.ps1) | Main orchestrator - runs everything in PowerShell 7 |
-| [ps_Custom-Functions.ps1](Scripts/ps_Custom-Functions.ps1) | Function library - logging, network tests, exit codes |
-| [ps_Install-Winget.ps1](Scripts/ps_Install-Winget.ps1) | Installs WinGet with fallback methods |
-| [ps_Install-Applications.ps1](Scripts/ps_Install-Applications.ps1) | WinGet app deployment |
-| [ps_Install-Drivers.ps1](Scripts/ps_Install-Drivers.ps1) | Dell DCU-CLI / HP IA driver updates |
+| [Start.ps1](Scripts/Start.ps1) | **Bootstrapper** - Installs WinGet + PS7, launches main deployment |
+| [Deploy-Device.ps1](Scripts/Deploy-Device.ps1) | Main orchestrator - runs everything in PowerShell 7 |
+| [Custom-Functions.ps1](Scripts/Custom-Functions.ps1) | Function library - logging, network tests, exit codes |
+| [Install-Winget.ps1](Scripts/Install-Winget.ps1) | Installs WinGet with fallback methods |
+| [Install-Applications.ps1](Scripts/Install-Applications.ps1) | WinGet app deployment |
+| [Install-Drivers.ps1](Scripts/Install-Drivers.ps1) | Dell DCU-CLI / HP IA driver updates |
 
 ## Usage Examples
 
 **Deploy everything:**
 ```powershell
-.\ps_Init-Deployment.ps1
+.\Start.ps1
 ```
 
 **Install specific apps (after initialization):**
 ```powershell
-.\ps_Install-Applications.ps1 -Applications @("Microsoft.PowerShell", "7zip.7zip")
+.\Install-Applications.ps1 -Applications @("Microsoft.PowerShell", "7zip.7zip")
 ```
 
 
@@ -120,8 +120,8 @@ During Windows setup, `autounattend.xml` searches for files matching `*Agent*.ex
    - USB removed too early during setup
 
 **Common fixes:**
-- Network issues: Increase retry count in `ps_Deploy-Device.ps1`
-- WinGet fails: Check Windows version, run `.\ps_Install-Winget.ps1` manually
+- Network issues: Increase retry count in `Deploy-Device.ps1`
+- WinGet fails: Check Windows version, run `.\Install-Winget.ps1` manually
 - Driver issues: Verify Dell DCU-CLI or HP IA installation and run them manually.
    - HP: C:\SWSetup\
    - Dell: C:\Program Files\Dell\CommandUpdate
