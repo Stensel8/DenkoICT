@@ -7,14 +7,14 @@
 </p>
 
 [![Dependabot Updates](https://github.com/Stensel8/DenkoICT/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/dependabot/dependabot-updates)
-
 [![DevSkim](https://github.com/Stensel8/DenkoICT/actions/workflows/devskim.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/devskim.yml)
-
 [![PSScriptAnalyzer](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml/badge.svg)](https://github.com/Stensel8/DenkoICT/actions/workflows/powershell.yml)
+
+**Huidige Versie:** [v1.0.0](https://github.com/Stensel8/DenkoICT/releases/tag/v1.0.0) | [Changelog](CHANGELOG.md) | [Releases](RELEASES.md) | [Scope](SCOPE.md)
 
 Geautomatiseerde Windows 11 Pro deployment tools. Geen handmatige kliks. Gebruikt PowerShell 2.0 in WinPE, PowerShell 5.1 om PowerShell 7 aan te roepen en vervolgens PowerShell 7 voor de daadwerkelijke deployment. Gebruikt moderne tools waar mogelijk.
 
-![Terminalscherm dat een succesvol Windows-implementatieproces toont. De console-uitvoer laat voltooide stappen zien: WinGet-installatie, Driverupdates voor HP en Dell, Applicatie-implementatie, Bloatware-verwijdering, Bureaubladachtergrond-configuratie, en Windows Updates. Alle zes stappen zijn succesvol uitgevoerd met PowerShell 7, zonder fouten of overgeslagen onderdelen. Logbestand opgeslagen op C:\DenkoICT\Logs\ps_Deploy-Device.ps1.log](Docs/Deployment_Flow.png)
+![Terminalscherm dat een succesvol Windows-implementatieproces toont. De console-uitvoer laat voltooide stappen zien: WinGet-installatie, Driverupdates voor HP en Dell, Applicatie-implementatie, Bloatware-verwijdering, Bureaubladachtergrond-configuratie, en Windows Updates. Alle zes stappen zijn succesvol uitgevoerd met PowerShell 7, zonder fouten of overgeslagen onderdelen. Logbestand opgeslagen op C:\DenkoICT\Logs\Deploy-Device.ps1.log](Docs/Deployment_Flow.png)
 
 ![Schermafbeelding van het verwachte eindresultaat na een succesvolle Windows 11 deployment. Toont een volledig geconfigureerd bureaublad met geïnstalleerde applicaties, bijgewerkte drivers, en een schoon systeem zonder bloatware. Alle deployment-stappen zijn voltooid, inclusief Windows Updates en RMM-agentinstallatie, klaar voor gebruik door eindgebruikers.](Docs/Expected_Result.png)
 
@@ -57,8 +57,8 @@ Zonder Ethernet gebeurt alleen de basis Windows install met hostname change.
 
 1. `autounattend.xml` configureert Windows, kopieert RMM agent van USB naar `C:\DenkoICT\Download\Agent.exe`
 2. Hostname verandert naar `PC-{SerialNumber}`, systeem reboot  
-3. `ps_Init-Deployment.ps1` wordt uitgevoerd bij de eerste login (PowerShell 5.1)
-4. Installeert WinGet en PowerShell 7, en start vervolgens `ps_Deploy-Device.ps1`
+3. `Start.ps1` wordt uitgevoerd bij de eerste login (PowerShell 5.1)
+4. Installeert WinGet en PowerShell 7, en start vervolgens `Deploy-Device.ps1`
 5. Elke deployment step wordt gevolgd in `HKLM:\SOFTWARE\DenkoICT\Deployment\Steps`
 
 **Steps executed:**
@@ -75,23 +75,23 @@ Als er iets mislukt, gaat de deployment door. Check `C:\DenkoICT\Logs` voor deta
 
 | Script | Wat Het Doet |
 | --- | --- |
-| [ps_Init-Deployment.ps1](Scripts/ps_Init-Deployment.ps1) | **Bootstrapper** - Installeert WinGet + PS7, start de main deployment |
-| [ps_Deploy-Device.ps1](Scripts/ps_Deploy-Device.ps1) | Main orchestrator - voert alles uit in PowerShell 7 |
-| [ps_Custom-Functions.ps1](Scripts/ps_Custom-Functions.ps1) | Function library - logging, network tests, exit codes |
-| [ps_Install-Winget.ps1](Scripts/ps_Install-Winget.ps1) | Installeert WinGet met fallback methods |
-| [ps_Install-Applications.ps1](Scripts/ps_Install-Applications.ps1) | WinGet app deployment |
-| [ps_Install-Drivers.ps1](Scripts/ps_Install-Drivers.ps1) | Dell DCU-CLI / HP IA driver updates |
+| [Start.ps1](Scripts/Start.ps1) | **Bootstrapper** - Installeert WinGet + PS7, start de main deployment |
+| [Deploy-Device.ps1](Scripts/Deploy-Device.ps1) | Main orchestrator - voert alles uit in PowerShell 7 |
+| [Custom-Functions.ps1](Scripts/Custom-Functions.ps1) | Function library - logging, network tests, exit codes |
+| [Install-Winget.ps1](Scripts/Install-Winget.ps1) | Installeert WinGet met fallback methods |
+| [Install-Applications.ps1](Scripts/Install-Applications.ps1) | WinGet app deployment |
+| [Install-Drivers.ps1](Scripts/Install-Drivers.ps1) | Dell DCU-CLI / HP IA driver updates |
 
 ## Gebruik Voorbeelden
 
 **Deploy everything:**
 ```powershell
-.\ps_Init-Deployment.ps1
+.\Start.ps1
 ```
 
 **Installeer specifieke apps (na initialization):**
 ```powershell
-.\ps_Install-Applications.ps1 -Applications @("Microsoft.PowerShell", "7zip.7zip")
+.\Install-Applications.ps1 -Applications @("Microsoft.PowerShell", "7zip.7zip")
 ```
 
 
@@ -120,8 +120,8 @@ Tijdens Windows setup zoekt `autounattend.xml` naar files die matchen met `*Agen
     - USB te vroeg removed tijdens setup
 
 **Common fixes:**
-- Network issues: Verhoog retry count in `ps_Deploy-Device.ps1`
-- WinGet faalt: Check Windows versie, run `.\ps_Install-Winget.ps1` handmatig
+- Network issues: Verhoog retry count in `Deploy-Device.ps1`
+- WinGet faalt: Check Windows versie, run `.\Install-Winget.ps1` handmatig
 - Driver issues: Verifieer Dell DCU-CLI of HP IA installation en run ze handmatig.
     - HP: C:\SWSetup\
     - Dell: C:\Program Files\Dell\CommandUpdate
