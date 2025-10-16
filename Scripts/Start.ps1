@@ -93,40 +93,59 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     if (-not $pwshPath) {
         Write-Host "PowerShell 7 not found. Installing..." -ForegroundColor Cyan
 
-        # Try to install using WinGet or fallback method
-        # First check script directory, then download directory
-        $wingetScript = Join-Path $PSScriptRoot "Install-Winget.ps1"
-        if (-not (Test-Path $wingetScript)) {
-            $wingetScript = Join-Path 'C:\DenkoICT\Download' "Install-Winget.ps1"
-        }
-
-        $ps7Script = Join-Path $PSScriptRoot "Install-PowerShell7.ps1"
-        if (-not (Test-Path $ps7Script)) {
-            $ps7Script = Join-Path 'C:\DenkoICT\Download' "Install-PowerShell7.ps1"
-        }
-
-        # Ensure download directory exists
-        if (!(Test-Path 'C:\DenkoICT\Download')) {
-            New-Item -Path 'C:\DenkoICT\Download' -ItemType Directory -Force | Out-Null
-        }
-
-        # Check/Install WinGet first if needed
+        # Try direct winget installation first (simplest method)
         $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
-        if (!$wingetAvailable) {
-            Write-Host "Installing WinGet first..." -ForegroundColor Cyan
-            if (Test-Path $wingetScript) {
-                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wingetScript
-            } else {
-                Write-Host "ERROR: Install-Winget.ps1 not found in script directory or download folder" -ForegroundColor Red
-            }
-        }
+        if ($wingetAvailable) {
+            Write-Host "Installing PowerShell 7 via winget..." -ForegroundColor Cyan
+            try {
+                $result = & winget install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements 2>&1
+                Write-Host "WinGet exit code: $LASTEXITCODE" -ForegroundColor Gray
 
-        # Install PowerShell 7
-        if (Test-Path $ps7Script) {
-            Write-Host "Installing PowerShell 7..." -ForegroundColor Cyan
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ps7Script
+                # Refresh PATH to pick up new installation
+                $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+                Start-Sleep -Seconds 3
+            } catch {
+                Write-Host "WinGet installation encountered an issue: $_" -ForegroundColor Yellow
+            }
         } else {
-            Write-Host "ERROR: Install-PowerShell7.ps1 not found in script directory or download folder" -ForegroundColor Red
+            Write-Host "WinGet not available. Trying installation scripts..." -ForegroundColor Yellow
+
+            # Fallback to installation scripts
+            $wingetScript = Join-Path $PSScriptRoot "Install-Winget.ps1"
+            if (-not (Test-Path $wingetScript)) {
+                $wingetScript = Join-Path 'C:\DenkoICT\Download' "Install-Winget.ps1"
+            }
+
+            $ps7Script = Join-Path $PSScriptRoot "Install-PowerShell7.ps1"
+            if (-not (Test-Path $ps7Script)) {
+                $ps7Script = Join-Path 'C:\DenkoICT\Download' "Install-PowerShell7.ps1"
+            }
+
+            # Ensure download directory exists
+            if (!(Test-Path 'C:\DenkoICT\Download')) {
+                New-Item -Path 'C:\DenkoICT\Download' -ItemType Directory -Force | Out-Null
+            }
+
+            # Try to install WinGet first
+            if (Test-Path $wingetScript) {
+                Write-Host "Installing WinGet..." -ForegroundColor Cyan
+                try {
+                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wingetScript
+                    $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
+                } catch {
+                    Write-Host "WinGet installation failed: $_" -ForegroundColor Yellow
+                }
+            }
+
+            # Try to install PowerShell 7 with script
+            if (Test-Path $ps7Script) {
+                Write-Host "Installing PowerShell 7 via script..." -ForegroundColor Cyan
+                try {
+                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ps7Script
+                } catch {
+                    Write-Host "PowerShell 7 script installation failed: $_" -ForegroundColor Yellow
+                }
+            }
         }
 
         # Recheck for pwsh
