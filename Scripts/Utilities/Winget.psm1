@@ -915,7 +915,8 @@ function Get-OSInfo {
         }
 
         $nameValue = $osDetails.Caption
-        $architecture = ($osDetails.OSArchitecture -replace "[^\d]").Trim()
+        $architecture = $osDetails.OSArchitecture -replace "[^\d]"
+        $architecture = $architecture.Trim()
         if ($architecture -eq '32') { $architecture = 'x32' }
         elseif ($architecture -eq '64') { $architecture = 'x64' }
 
@@ -925,7 +926,8 @@ function Get-OSInfo {
         elseif ($osDetails.ProductType -in 2,3) { $typeValue = 'Server' }
         else { $typeValue = 'Unknown' }
 
-        $numericVersion = ($nameValue -replace "[^\d]").Trim()
+        $numericVersion = $nameValue -replace "[^\d]"
+        $numericVersion = $numericVersion.Trim()
         if ($numericVersion -ge 10 -and $osDetails.Caption -match 'multi-session') {
             $typeValue = 'Workstation'
         }
