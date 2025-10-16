@@ -94,10 +94,18 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
         Write-Host "PowerShell 7 not found. Installing..." -ForegroundColor Cyan
 
         # Try to install using WinGet or fallback method
-        $wingetScript = Join-Path 'C:\DenkoICT\Download' "Install-Winget.ps1"
-        $ps7Script = Join-Path 'C:\DenkoICT\Download' "Install-PowerShell7.ps1"
+        # First check script directory, then download directory
+        $wingetScript = Join-Path $PSScriptRoot "Install-Winget.ps1"
+        if (-not (Test-Path $wingetScript)) {
+            $wingetScript = Join-Path 'C:\DenkoICT\Download' "Install-Winget.ps1"
+        }
 
-        # Ensure directories exist
+        $ps7Script = Join-Path $PSScriptRoot "Install-PowerShell7.ps1"
+        if (-not (Test-Path $ps7Script)) {
+            $ps7Script = Join-Path 'C:\DenkoICT\Download' "Install-PowerShell7.ps1"
+        }
+
+        # Ensure download directory exists
         if (!(Test-Path 'C:\DenkoICT\Download')) {
             New-Item -Path 'C:\DenkoICT\Download' -ItemType Directory -Force | Out-Null
         }
@@ -108,6 +116,8 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
             Write-Host "Installing WinGet first..." -ForegroundColor Cyan
             if (Test-Path $wingetScript) {
                 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wingetScript
+            } else {
+                Write-Host "ERROR: Install-Winget.ps1 not found in script directory or download folder" -ForegroundColor Red
             }
         }
 
@@ -115,6 +125,8 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
         if (Test-Path $ps7Script) {
             Write-Host "Installing PowerShell 7..." -ForegroundColor Cyan
             & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ps7Script
+        } else {
+            Write-Host "ERROR: Install-PowerShell7.ps1 not found in script directory or download folder" -ForegroundColor Red
         }
 
         # Recheck for pwsh
